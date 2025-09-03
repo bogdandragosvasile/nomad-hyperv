@@ -47,14 +47,12 @@ resource "hyperv_machine_instance" "consul_servers" {
   }
   
   hard_disk_drives {
-    controller_type = "Scsi"
     controller_number = 0
     controller_location = 0
     path = "${var.base_image_path}"
   }
   
   dvd_drives {
-    controller_type = "Scsi"
     controller_number = 1
     controller_location = 0
     path = ""
@@ -63,12 +61,6 @@ resource "hyperv_machine_instance" "consul_servers" {
   vm_firmware {
     enable_secure_boot = "On"
     secure_boot_template = "MicrosoftUEFICertificateAuthority"
-  }
-  
-  tags = {
-    role = "consul-server"
-    environment = "dev"
-    managed_by = "terraform"
   }
 }
 
@@ -93,14 +85,12 @@ resource "hyperv_machine_instance" "nomad_servers" {
   }
   
   hard_disk_drives {
-    controller_type = "Scsi"
     controller_number = 0
     controller_location = 0
     path = "${var.base_image_path}"
   }
   
   dvd_drives {
-    controller_type = "Scsi"
     controller_number = 1
     controller_location = 0
     path = ""
@@ -109,12 +99,6 @@ resource "hyperv_machine_instance" "nomad_servers" {
   vm_firmware {
     enable_secure_boot = "On"
     secure_boot_template = "MicrosoftUEFICertificateAuthority"
-  }
-  
-  tags = {
-    role = "nomad-server"
-    environment = "dev"
-    managed_by = "terraform"
   }
 }
 
@@ -139,14 +123,12 @@ resource "hyperv_machine_instance" "nomad_clients" {
   }
   
   hard_disk_drives {
-    controller_type = "Scsi"
     controller_number = 0
     controller_location = 0
     path = "${var.base_image_path}"
   }
   
   dvd_drives {
-    controller_type = "Scsi"
     controller_number = 1
     controller_location = 0
     path = ""
@@ -155,12 +137,6 @@ resource "hyperv_machine_instance" "nomad_clients" {
   vm_firmware {
     enable_secure_boot = "On"
     secure_boot_template = "MicrosoftUEFICertificateAuthority"
-  }
-  
-  tags = {
-    role = "nomad-client"
-    environment = "dev"
-    managed_by = "terraform"
   }
 }
 
