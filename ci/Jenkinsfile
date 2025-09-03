@@ -231,12 +231,27 @@ pipeline {
 def validatePrerequisites() {
     echo "Validating prerequisites..."
     
+    // Check agent type and capabilities
+    echo "Agent Information:"
+    echo "- Name: ${env.NODE_NAME}"
+    echo "- Labels: ${env.NODE_LABELS}"
+    echo "- OS: ${isUnix() ? 'Unix/Linux' : 'Windows'}"
+    
     // Check if running on Windows (for Hyper-V operations)
     if (isUnix()) {
         echo "Running on Unix/Linux agent - will use remote execution for Windows operations"
-        // Don't error out - just note that we'll need to handle Windows operations differently
+        echo "For Hyper-V operations, ensure Windows agent is available with label 'windows-hyperv-agent'"
     } else {
         echo "Running on Windows agent - can perform Hyper-V operations directly"
+        echo "Verifying Hyper-V capabilities..."
+        
+        // Check Hyper-V PowerShell module availability
+        try {
+            powershell 'Get-Command Get-VM -ErrorAction SilentlyContinue'
+            echo "Hyper-V PowerShell module is available"
+        } catch (Exception e) {
+            echo "Warning: Hyper-V PowerShell module not available: ${e.message}"
+        }
     }
     
     // Check Docker availability (should work on both Unix and Windows)
@@ -587,9 +602,9 @@ def completeHybridDeployment() {
     echo "Completing hybrid deployment..."
     
     if (env.HYBRID_MODE_ACTIVE == 'true') {
-        echo "HYBRID MODE: This stage should run on Windows agent"
+        echo "HYBRID MODE: Completing deployment on current agent"
         echo "Current agent: ${env.NODE_NAME}"
-        echo "Required: Windows agent with Hyper-V access"
+        echo "Agent labels: ${env.NODE_LABELS}"
         
         // Check if we have the stored plan
         if (fileExists('tfplan')) {
@@ -603,7 +618,7 @@ def completeHybridDeployment() {
                 sh 'terraform output -json > outputs.json'
                 
                 // Parse outputs for later use
-                def outputs = readJSON file: 'outputs.json'
+                def outputs = readJSON file: 'output.json'
                 env.CONSUL_SERVERS = outputs.consul_servers.ips.join(',')
                 env.NOMAD_SERVERS = outputs.nomad_servers.ips.join(',')
                 env.NOMAD_CLIENTS = outputs.nomad_clients.ips.join(',')
@@ -611,6 +626,7 @@ def completeHybridDeployment() {
                 // Clear hybrid mode flag
                 env.HYBRID_MODE_ACTIVE = 'false'
                 env.INFRASTRUCTURE_PLANNED = 'false'
+                env.HYBRID_DEPLOYMENT_READY = 'true'
             }
             
             echo "Hybrid deployment completed successfully!"
