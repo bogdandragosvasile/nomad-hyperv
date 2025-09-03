@@ -1,0 +1,179 @@
+# Ansible inventory for development environment
+
+all:
+  children:
+    consul_servers:
+      hosts:
+        consul-server-1:
+          ansible_host: 192.168.1.100
+          ansible_user: ubuntu
+          ansible_ssh_private_key_file: ~/.ssh/id_rsa
+          consul_role: server
+          consul_bootstrap_expect: 3
+          consul_retry_join:
+            - 192.168.1.100
+            - 192.168.1.101
+            - 192.168.1.102
+        consul-server-2:
+          ansible_host: 192.168.1.101
+          ansible_user: ubuntu
+          ansible_ssh_private_key_file: ~/.ssh/id_rsa
+          consul_role: server
+          consul_bootstrap_expect: 3
+          consul_retry_join:
+            - 192.168.1.100
+            - 192.168.1.101
+            - 192.168.1.102
+        consul-server-3:
+          ansible_host: 192.168.1.102
+          ansible_user: ubuntu
+          ansible_ssh_private_key_file: ~/.ssh/id_rsa
+          consul_role: server
+          consul_bootstrap_expect: 3
+          consul_retry_join:
+            - 192.168.1.100
+            - 192.168.1.101
+            - 192.168.1.102
+      vars:
+        consul_datacenter: dc1
+        consul_encrypt: "{{ vault_consul_encrypt_key }}"
+        consul_acl_datacenter: dc1
+        consul_acl_default_policy: deny
+        consul_acl_down_policy: extend-cache
+        consul_acl_ttl: 30s
+        consul_acl_token: "{{ vault_consul_acl_token }}"
+        consul_ui: true
+        consul_ports:
+          http: 8500
+          https: 8501
+          dns: 8600
+          rpc: 8300
+          serf_lan: 8301
+          serf_wan: 8302
+    
+    nomad_servers:
+      hosts:
+        nomad-server-1:
+          ansible_host: 192.168.1.103
+          ansible_user: ubuntu
+          ansible_ssh_private_key_file: ~/.ssh/id_rsa
+          nomad_role: server
+          nomad_bootstrap_expect: 3
+          nomad_retry_join:
+            - 192.168.1.103
+            - 192.168.1.104
+            - 192.168.1.105
+        nomad-server-2:
+          ansible_host: 192.168.1.104
+          ansible_user: ubuntu
+          ansible_ssh_private_key_file: ~/.ssh/id_rsa
+          nomad_role: server
+          nomad_bootstrap_expect: 3
+          nomad_retry_join:
+            - 192.168.1.103
+            - 192.168.1.104
+            - 192.168.1.105
+        nomad-server-3:
+          ansible_host: 192.168.1.105
+          ansible_user: ubuntu
+          ansible_ssh_private_key_file: ~/.ssh/id_rsa
+          nomad_role: server
+          nomad_bootstrap_expect: 3
+          nomad_retry_join:
+            - 192.168.1.103
+            - 192.168.1.104
+            - 192.168.1.105
+      vars:
+        nomad_datacenter: dc1
+        nomad_region: global
+        nomad_encrypt: "{{ vault_nomad_encrypt_key }}"
+        nomad_ports:
+          http: 4646
+          https: 4647
+          rpc: 4648
+          serf: 4649
+    
+    nomad_clients:
+      hosts:
+        nomad-client-1:
+          ansible_host: 192.168.1.106
+          ansible_user: ubuntu
+          ansible_ssh_private_key_file: ~/.ssh/id_rsa
+          nomad_role: client
+          nomad_servers:
+            - 192.168.1.103
+            - 192.168.1.104
+            - 192.168.1.105
+        nomad-client-2:
+          ansible_host: 192.168.1.107
+          ansible_user: ubuntu
+          ansible_ssh_private_key_file: ~/.ssh/id_rsa
+          nomad_role: client
+          nomad_servers:
+            - 192.168.1.103
+            - 192.168.1.104
+            - 192.168.1.105
+        nomad-client-3:
+          ansible_host: 192.168.1.108
+          ansible_user: ubuntu
+          ansible_ssh_private_key_file: ~/.ssh/id_rsa
+          nomad_role: client
+          nomad_servers:
+            - 192.168.1.103
+            - 192.168.1.104
+            - 192.168.1.105
+      vars:
+        nomad_datacenter: dc1
+        nomad_region: global
+        nomad_ports:
+          http: 4646
+          https: 4647
+          rpc: 4648
+          serf: 4649
+    
+    cluster_nodes:
+      children:
+        consul_servers
+        nomad_servers
+        nomad_clients
+      vars:
+        ansible_python_interpreter: /usr/bin/python3
+        ansible_ssh_common_args: '-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null'
+        ansible_ssh_pipelining: true
+        ansible_become: true
+        ansible_become_method: sudo
+        ansible_become_user: root
+        ansible_become_ask_pass: false
+        
+        # Common variables
+        timezone: UTC
+        locale: en_US.UTF-8
+        
+        # Package versions
+        consul_version: "1.16.0"
+        nomad_version: "1.6.0"
+        docker_version: "24.0.5"
+        
+        # Monitoring
+        enable_monitoring: true
+        node_exporter_version: "1.6.1"
+        cadvisor_version: "v0.47.2"
+        
+        # Security
+        enable_firewall: true
+        enable_ufw: true
+        ssh_port: 22
+        
+        # Backup
+        backup_enabled: true
+        backup_retention_days: 30
+        backup_path: /opt/backups
+        
+        # Logging
+        log_retention_days: 90
+        log_path: /var/log/nomad-consul
+        
+        # Performance
+        enable_swap: false
+        vm_max_map_count: 262144
+        fs_file_max: 65536

@@ -1,0 +1,165 @@
+# Jenkins Agent Dockerfile with Terraform, Ansible, Nomad, and Consul CLIs
+FROM ubuntu:22.04
+
+# Set environment variables
+ENV DEBIAN_FRONTEND=noninteractive
+ENV TERRAFORM_VERSION=1.5.0
+ENV ANSIBLE_VERSION=2.15.0
+ENV NOMAD_VERSION=1.6.0
+ENV CONSUL_VERSION=1.16.0
+ENV DOCKER_VERSION=24.0.5
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    curl \
+    wget \
+    unzip \
+    git \
+    ssh \
+    python3 \
+    python3-pip \
+    python3-setuptools \
+    python3-dev \
+    build-essential \
+    libssl-dev \
+    libffi-dev \
+    software-properties-common \
+    apt-transport-https \
+    ca-certificates \
+    gnupg \
+    lsb-release \
+    jq \
+    vim \
+    htop \
+    net-tools \
+    iputils-ping \
+    telnet \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Docker
+RUN curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg \
+    && echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" | tee /etc/apt/sources.list.d/docker.list > /dev/null \
+    && apt-get update \
+    && apt-get install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Terraform
+RUN wget -O /tmp/terraform.zip "https://releases.hashicorp.com/terraform/${TERRAFORM_VERSION}/terraform_${TERRAFORM_VERSION}_linux_amd64.zip" \
+    && unzip /tmp/terraform.zip -d /usr/local/bin \
+    && rm /tmp/terraform.zip \
+    && terraform --version
+
+# Install Ansible
+RUN pip3 install --no-cache-dir "ansible==${ANSIBLE_VERSION}" \
+    && ansible --version
+
+# Install Nomad CLI
+RUN wget -O /tmp/nomad.zip "https://releases.hashicorp.com/nomad/${NOMAD_VERSION}/nomad_${NOMAD_VERSION}_linux_amd64.zip" \
+    && unzip /tmp/nomad.zip -d /usr/local/bin \
+    && rm /tmp/nomad.zip \
+    && nomad version
+
+# Install Consul CLI
+RUN wget -O /tmp/consul.zip "https://releases.hashicorp.com/consul/${CONSUL_VERSION}/consul_${CONSUL_VERSION}_linux_amd64.zip" \
+    && unzip /tmp/consul.zip -d /usr/local/bin \
+    && rm /tmp/consul.zip \
+    && consul version
+
+# Install kubectl (optional)
+RUN curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl" \
+    && chmod +x kubectl \
+    && mv kubectl /usr/local/bin \
+    && kubectl version --client
+
+# Install additional Python packages
+RUN pip3 install --no-cache-dir \
+    boto3 \
+    azure-mgmt-compute \
+    google-cloud-compute \
+    pywinrm \
+    pymongo \
+    redis \
+    requests \
+    jinja2 \
+    yaml
+
+# Create jenkins user
+RUN useradd -m -s /bin/bash jenkins \
+    && usermod -aG docker jenkins \
+    && echo "jenkins ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers
+
+# Create workspace directory
+RUN mkdir -p /home/jenkins/workspace \
+    && chown -R jenkins:jenkins /home/jenkins
+
+# Create SSH directory and set permissions
+RUN mkdir -p /home/jenkins/.ssh \
+    && chown -R jenkins:jenkins /home/jenkins/.ssh \
+    && chmod 700 /home/jenkins/.ssh
+
+# Create Ansible configuration
+RUN mkdir -p /etc/ansible \
+    && echo "[defaults]" > /etc/ansible/ansible.cfg \
+    && echo "host_key_checking = False" >> /etc/ansible/ansible.cfg \
+    && echo "stdout_callback = yaml" >> /etc/ansible/ansible.cfg \
+    && echo "gathering = smart" >> /etc/ansible/ansible.cfg \
+    && echo "fact_caching = memory" >> /etc/ansible/ansible.cfg
+
+# Create Terraform configuration
+RUN mkdir -p /home/jenkins/.terraform.d \
+    && echo 'plugin_cache_dir = "$HOME/.terraform.d/plugin-cache"' > /home/jenkins/.terraformrc \
+    && chown -R jenkins:jenkins /home/jenkins/.terraform.d \
+    && chown jenkins:jenkins /home/jenkins/.terraformrc
+
+# Install additional tools
+RUN curl -L "https://github.com/derailed/k9s/releases/latest/download/k9s_Linux_x86_64.tar.gz" | tar xz \
+    && mv k9s /usr/local/bin \
+    && chmod +x /usr/local/bin/k9s
+
+# Install Helm
+RUN curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+
+# Install additional monitoring tools
+RUN wget -O /usr/local/bin/promtool "https://github.com/prometheus/prometheus/releases/download/v2.45.0/promtool-2.45.0.linux-amd64.tar.gz" \
+    && tar -xzf /usr/local/bin/promtool -C /usr/local/bin --strip-components=1 promtool \
+    && chmod +x /usr/local/bin/promtool
+
+# Create symlinks for common tools
+RUN ln -sf /usr/bin/python3 /usr/bin/python \
+    && ln -sf /usr/bin/pip3 /usr/bin/pip
+
+# Set working directory
+WORKDIR /home/jenkins/workspace
+
+# Switch to jenkins user
+USER jenkins
+
+# Set environment variables for jenkins user
+ENV PATH="/home/jenkins/.local/bin:${PATH}"
+ENV ANSIBLE_CONFIG="/etc/ansible/ansible.cfg"
+ENV TF_PLUGIN_CACHE_DIR="/home/jenkins/.terraform.d/plugin-cache"
+
+# Create entrypoint script
+RUN echo '#!/bin/bash\n\
+echo "Jenkins Agent with IaC tools ready"\n\
+echo "Available tools:"\n\
+echo "  - Terraform: $(terraform version)"\n\
+echo "  - Ansible: $(ansible --version | head -1)"\n\
+echo "  - Nomad: $(nomad version)"\n\
+echo "  - Consul: $(consul version)"\n\
+echo "  - Docker: $(docker --version)"\n\
+echo "  - kubectl: $(kubectl version --client)"\n\
+echo "  - Helm: $(helm version --short)"\n\
+echo "  - k9s: $(k9s version)"\n\
+echo "Starting agent..."\n\
+exec "$@"' > /home/jenkins/entrypoint.sh \
+    && chmod +x /home/jenkins/entrypoint.sh
+
+# Expose port for agent communication
+EXPOSE 22
+
+# Set entrypoint
+ENTRYPOINT ["/home/jenkins/entrypoint.sh"]
+
+# Default command
+CMD ["/bin/bash"]

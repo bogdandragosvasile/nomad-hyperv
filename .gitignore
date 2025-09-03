@@ -1,0 +1,61 @@
+# Terraform
+*.tfstate
+*.tfstate.*
+.terraform/
+.terraform.lock.hcl
+terraform.tfvars
+*.tfvars.json
+.terraform.tfstate.lock.info
+
+# Ansible
+*.retry
+ansible.cfg
+hosts
+vault_pass.txt
+
+# Jenkins
+jenkins_home/
+jenkins_data/
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+
+# IDE
+.vscode/
+.idea/
+*.sublime-*
+
+# Temporary files
+*.tmp
+*.temp
+*.bak
+*.backup
+
+# Sensitive data
+*.pem
+*.key
+*.crt
+secrets/
+.env
+
+# Build artifacts
+dist/
+build/
+*.tar.gz
+*.zip
+
+# Logs
+logs/
+*.log
+
+# Docker
+.dockerignore
+docker-compose.override.yml
+
+# Backup files
+*.backup
+*.old

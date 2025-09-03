@@ -1,0 +1,192 @@
+---
+# Ansible playbook for setting up Nomad cluster
+- name: Setup Nomad HA Cluster
+  hosts: nomad_servers:nomad_clients
+  become: true
+  gather_facts: true
+  
+  vars:
+    nomad_user: nomad
+    nomad_group: nomad
+    nomad_home: /opt/nomad
+    nomad_config_dir: /etc/nomad.d
+    nomad_data_dir: /opt/nomad/data
+    nomad_log_dir: /var/log/nomad
+    
+  pre_tasks:
+    - name: Update apt cache
+      apt:
+        update_cache: yes
+        cache_valid_time: 3600
+        
+    - name: Install required packages
+      apt:
+        name:
+          - unzip
+          - curl
+          - wget
+          - gnupg2
+          - software-properties-common
+          - apt-transport-https
+          - ca-certificates
+          - docker.io
+          - docker-compose
+        state: present
+        
+    - name: Create nomad user and group
+      user:
+        name: "{{ nomad_user }}"
+        system: yes
+        shell: /bin/false
+        home: "{{ nomad_home }}"
+        create_home: no
+        groups: docker
+        
+    - name: Create nomad directories
+      file:
+        path: "{{ item }}"
+        state: directory
+        owner: "{{ nomad_user }}"
+        group: "{{ nomad_group }}"
+        mode: '0755'
+      loop:
+        - "{{ nomad_home }}"
+        - "{{ nomad_config_dir }}"
+        - "{{ nomad_data_dir }}"
+        - "{{ nomad_log_dir }}"
+        
+    - name: Download and extract Nomad
+      unarchive:
+        src: "https://releases.hashicorp.com/nomad/{{ nomad_version }}/nomad_{{ nomad_version }}_linux_amd64.zip"
+        dest: /tmp/
+        remote_src: yes
+        creates: /tmp/nomad
+        
+    - name: Install Nomad binary
+      copy:
+        src: /tmp/nomad
+        dest: /usr/local/bin/nomad
+        mode: '0755'
+        remote_src: yes
+        
+    - name: Create Nomad systemd service file
+      template:
+        src: nomad.service.j2
+        dest: /etc/systemd/system/nomad.service
+        mode: '0644'
+      notify: restart nomad
+        
+    - name: Create Nomad configuration
+      template:
+        src: "nomad-{{ nomad_role }}.json.j2"
+        dest: "{{ nomad_config_dir }}/nomad.json"
+        mode: '0644'
+        owner: "{{ nomad_user }}"
+        group: "{{ nomad_group }}"
+      notify: restart nomad
+      
+    - name: Configure firewall for Nomad
+      ufw:
+        rule: allow
+        port: "{{ item }}"
+        proto: tcp
+      loop:
+        - 4646  # HTTP API
+        - 4647  # HTTPS API
+        - 4648  # RPC
+        - 4649  # Serf
+      when: enable_ufw | bool
+      
+    - name: Enable and start Nomad service
+      systemd:
+        name: nomad
+        enabled: yes
+        state: started
+        daemon_reload: yes
+        
+  tasks:
+    - name: Wait for Nomad to start
+      uri:
+        url: "http://localhost:4646/v1/status/leader"
+        method: GET
+      register: nomad_status
+      until: nomad_status.status == 200
+      retries: 30
+      delay: 10
+      when: nomad_role == "server"
+      
+    - name: Join Nomad cluster (servers)
+      command: "nomad server join {{ hostvars[item]['ansible_host'] }}"
+      loop: "{{ groups['nomad_servers'] }}"
+      when: 
+        - nomad_role == "server"
+        - item != inventory_hostname
+      register: join_result
+      changed_when: join_result.rc == 0
+      failed_when: 
+        - join_result.rc != 0 
+        - "'already a member' not in join_result.stderr"
+        
+    - name: Join Nomad cluster (clients)
+      command: "nomad node join {{ hostvars[item]['ansible_host'] }}"
+      loop: "{{ groups['nomad_servers'] }}"
+      when: nomad_role == "client"
+      register: join_result
+      changed_when: join_result.rc == 0
+      failed_when: 
+        - join_result.rc != 0 
+        - "'already a member' not in join_result.stderr"
+        
+    - name: Verify Nomad cluster membership (servers)
+      command: nomad server members
+      register: nomad_members
+      changed_when: false
+      when: nomad_role == "server"
+      
+    - name: Verify Nomad cluster membership (clients)
+      command: nomad node status
+      register: nomad_nodes
+      changed_when: false
+      when: nomad_role == "client"
+      
+    - name: Display Nomad cluster status
+      debug:
+        msg: "{{ nomad_members.stdout_lines if nomad_role == 'server' else nomad_nodes.stdout_lines }}"
+        
+  post_tasks:
+    - name: Check Nomad cluster health (servers)
+      uri:
+        url: "http://localhost:4646/v1/status/peers"
+        method: GET
+      register: nomad_peers
+      when: nomad_role == "server"
+      
+    - name: Verify server quorum
+      assert:
+        that:
+          - nomad_peers.json | length >= 3
+        fail_msg: "Nomad cluster does not have enough servers for quorum"
+        success_msg: "Nomad cluster is healthy with {{ nomad_peers.json | length }} servers"
+      when: nomad_role == "server"
+      
+    - name: Check client node status
+      uri:
+        url: "http://localhost:4646/v1/nodes"
+        method: GET
+      register: nomad_client_nodes
+      when: nomad_role == "client"
+      
+    - name: Verify client registration
+      assert:
+        that:
+          - nomad_client_nodes.json | length > 0
+        fail_msg: "Nomad client not registered with cluster"
+        success_msg: "Nomad client registered successfully"
+      when: nomad_role == "client"
+      
+  handlers:
+    - name: restart nomad
+      systemd:
+        name: nomad
+        state: restarted
+        daemon_reload: yes
