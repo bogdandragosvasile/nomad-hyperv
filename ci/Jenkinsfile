@@ -1,5 +1,7 @@
 pipeline {
-    agent any
+    agent {
+        label 'nomad-consul-agent'
+    }
     
     environment {
         TF_WORKSPACE = 'nomad-cluster'
@@ -21,6 +23,11 @@ pipeline {
             name: 'DRY_RUN',
             defaultValue: false,
             description: 'Perform a dry run without making changes'
+        )
+        booleanParam(
+            name: 'HYBRID_MODE',
+            defaultValue: true,
+            description: 'Use Linux agent for validation, Windows for deployment'
         )
         string(
             name: 'TERRAFORM_VERSION',
@@ -60,7 +67,11 @@ pipeline {
             }
             steps {
                 script {
-                    provisionInfrastructure()
+                    if (params.HYBRID_MODE) {
+                        provisionInfrastructureHybrid()
+                    } else {
+                        provisionInfrastructure()
+                    }
                 }
             }
         }
@@ -71,10 +82,46 @@ pipeline {
                     expression { params.DEPLOYMENT_TYPE == 'full' }
                     expression { params.DEPLOYMENT_TYPE == 'infrastructure' }
                 }
+                not {
+                    expression { env.HYBRID_MODE_ACTIVE == 'true' }
+                }
             }
             steps {
                 script {
                     waitForVMs()
+                }
+            }
+        }
+        
+        stage('Hybrid Mode Completion') {
+            when {
+                expression { env.HYBRID_MODE_ACTIVE == 'true' }
+            }
+            steps {
+                script {
+                    echo "HYBRID MODE: Infrastructure planning completed successfully!"
+                    echo ""
+                    echo "Next steps to complete deployment:"
+                    echo "1. Run this pipeline on a Windows agent with HYBRID_MODE=false"
+                    echo "2. Or manually execute: terraform apply tfplan"
+                    echo "3. Then continue with cluster configuration"
+                    echo ""
+                    echo "Current status: Infrastructure planned and validated ✅"
+                    echo "Required: Windows agent for Hyper-V VM creation"
+                }
+            }
+        }
+        
+        stage('Complete Hybrid Deployment') {
+            when {
+                expression { env.HYBRID_MODE_ACTIVE == 'true' }
+            }
+            agent {
+                label 'windows-hyperv-agent'
+            }
+            steps {
+                script {
+                    completeHybridDeployment()
                 }
             }
         }
@@ -84,6 +131,9 @@ pipeline {
                 anyOf {
                     expression { params.DEPLOYMENT_TYPE == 'full' }
                     expression { params.DEPLOYMENT_TYPE == 'configuration' }
+                }
+                not {
+                    expression { env.HYBRID_MODE_ACTIVE == 'true' }
                 }
             }
             steps {
@@ -231,6 +281,67 @@ def provisionInfrastructure() {
         }
         
         // Apply changes
+        if (params.DRY_RUN) {
+            echo "DRY RUN: Would apply Terraform changes"
+        } else {
+            sh 'terraform apply tfplan'
+        }
+        
+        // Get outputs
+        sh 'terraform output -json > outputs.json'
+        
+        // Parse outputs for later use
+        def outputs = readJSON file: 'outputs.json'
+        env.CONSUL_SERVERS = outputs.consul_servers.ips.join(',')
+        env.NOMAD_SERVERS = outputs.nomad_servers.ips.join(',')
+        env.NOMAD_CLIENTS = outputs.nomad_clients.ips.join(',')
+    }
+    
+    echo "Infrastructure provisioning completed"
+}
+
+def provisionInfrastructureHybrid() {
+    echo "Provisioning infrastructure using HYBRID approach..."
+    echo "Linux Agent: Validation and Planning"
+    echo "Windows Agent: Actual Deployment (when available)"
+    
+    dir('infra/terraform') {
+        // Initialize Terraform
+        if (params.DRY_RUN) {
+            echo "DRY RUN: Would initialize Terraform"
+        } else {
+            sh 'terraform init'
+        }
+        
+        // Plan changes (Linux agent can do this)
+        if (params.DRY_RUN) {
+            echo "DRY RUN: Would plan Terraform changes"
+        } else {
+            sh 'terraform plan -out=tfplan'
+        }
+        
+        // Check if we're in hybrid mode and need Windows agent
+        if (params.HYBRID_MODE && !params.DRY_RUN) {
+            echo "HYBRID MODE: Infrastructure plan completed successfully"
+            echo "Next steps require Windows agent for Hyper-V operations:"
+            echo "1. Terraform apply (Hyper-V VM creation)"
+            echo "2. VM startup and management"
+            echo ""
+            echo "To complete deployment, run this pipeline on a Windows agent"
+            echo "or set HYBRID_MODE=false for full Linux agent execution"
+            
+            // Store plan for later use
+            archiveArtifacts artifacts: 'tfplan', fingerprint: true
+            
+            // Set environment variables for next stages
+            env.INFRASTRUCTURE_PLANNED = 'true'
+            env.HYBRID_MODE_ACTIVE = 'true'
+            
+            // Skip actual apply for now
+            return
+        }
+        
+        // Apply changes (only if not in hybrid mode)
         if (params.DRY_RUN) {
             echo "DRY RUN: Would apply Terraform changes"
         } else {
@@ -448,6 +559,45 @@ def notifySuccess() {
     // Send success notification
     // This could be Slack, email, or other notification method
     echo "Success notification sent"
+}
+
+def completeHybridDeployment() {
+    echo "Completing hybrid deployment..."
+    
+    if (env.HYBRID_MODE_ACTIVE == 'true') {
+        echo "HYBRID MODE: This stage should run on Windows agent"
+        echo "Current agent: ${env.NODE_NAME}"
+        echo "Required: Windows agent with Hyper-V access"
+        
+        // Check if we have the stored plan
+        if (fileExists('tfplan')) {
+            echo "Found stored Terraform plan, proceeding with apply..."
+            
+            dir('infra/terraform') {
+                // Apply the stored plan
+                sh 'terraform apply tfplan'
+                
+                // Get outputs
+                sh 'terraform output -json > outputs.json'
+                
+                // Parse outputs for later use
+                def outputs = readJSON file: 'outputs.json'
+                env.CONSUL_SERVERS = outputs.consul_servers.ips.join(',')
+                env.NOMAD_SERVERS = outputs.nomad_servers.ips.join(',')
+                env.NOMAD_CLIENTS = outputs.nomad_clients.ips.join(',')
+                
+                // Clear hybrid mode flag
+                env.HYBRID_MODE_ACTIVE = 'false'
+                env.INFRASTRUCTURE_PLANNED = 'false'
+            }
+            
+            echo "Hybrid deployment completed successfully!"
+        } else {
+            error "No Terraform plan found. Please run planning stage first."
+        }
+    } else {
+        echo "Not in hybrid mode, skipping..."
+    }
 }
 
 def notifyFailure() {
