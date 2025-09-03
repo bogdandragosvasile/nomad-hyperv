@@ -3,9 +3,20 @@
 
 # Variables are defined in variables.tf
 
-# Data sources
+# Data sources - Conditional based on platform
+locals {
+  is_windows = length(regexall("(?i)windows", path.root)) > 0 || length(regexall("(?i)win", path.root)) > 0
+}
+
+# Network switch data source - only read when on Windows
 data "hyperv_network_switch" "external" {
+  count = local.is_windows ? 1 : 0
   name = var.network_switch
+}
+
+# Fallback for non-Windows platforms
+locals {
+  network_switch_name = local.is_windows ? data.hyperv_network_switch.external[0].name : var.network_switch
 }
 
 # Local variables for IP addressing
@@ -43,7 +54,7 @@ resource "hyperv_machine_instance" "consul_servers" {
   
   network_adaptors {
     name = "Network Adapter"
-    switch_name = data.hyperv_network_switch.external.name
+    switch_name = local.network_switch_name
   }
   
   hard_disk_drives {
@@ -81,7 +92,7 @@ resource "hyperv_machine_instance" "nomad_servers" {
   
   network_adaptors {
     name = "Network Adapter"
-    switch_name = data.hyperv_network_switch.external.name
+    switch_name = local.network_switch_name
   }
   
   hard_disk_drives {
@@ -119,7 +130,7 @@ resource "hyperv_machine_instance" "nomad_clients" {
   
   network_adaptors {
     name = "Network Adapter"
-    switch_name = data.hyperv_network_switch.external.name
+    switch_name = local.network_switch_name
   }
   
   hard_disk_drives {
