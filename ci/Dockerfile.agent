@@ -34,6 +34,7 @@ RUN apt-get update && apt-get install -y \
     iputils-ping \
     telnet \
     docker.io \
+    openjdk-17-jdk \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Terraform
@@ -93,7 +94,7 @@ RUN mkdir -p /etc/ansible \
     && echo "gathering = smart" >> /etc/ansible/ansible.cfg
 
 # Create Terraform configuration
-RUN mkdir -p /home/jenkins/.terraform.d \
+RUN mkdir -p /home/jenkins/.terraform.d/plugin-cache \
     && echo 'plugin_cache_dir = "$HOME/.terraform.d/plugin-cache"' > /home/jenkins/.terraformrc \
     && chown -R jenkins:jenkins /home/jenkins/.terraform.d \
     && chown jenkins:jenkins /home/jenkins/.terraformrc
@@ -124,7 +125,9 @@ echo "  - Consul: $(consul version)"\n\
 echo "  - Docker: $(docker --version)"\n\
 echo "  - kubectl: $(kubectl version --client)"\n\
 echo "Starting agent..."\n\
-exec "$@"' > /home/jenkins/entrypoint.sh \
+echo "Agent is ready and waiting for Jenkins connection..."\n\
+# Keep container running\n\
+tail -f /dev/null' > /home/jenkins/entrypoint.sh \
     && chmod +x /home/jenkins/entrypoint.sh
 
 # Expose port for agent communication
@@ -132,6 +135,3 @@ EXPOSE 22
 
 # Set entrypoint
 ENTRYPOINT ["/home/jenkins/entrypoint.sh"]
-
-# Default command
-CMD ["/bin/bash"]

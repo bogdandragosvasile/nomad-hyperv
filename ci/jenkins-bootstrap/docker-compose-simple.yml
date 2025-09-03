@@ -16,8 +16,6 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock
       - ./plugins.txt:/usr/share/jenkins/ref/plugins.txt
       - ./jenkins.yaml:/usr/share/jenkins/ref/jenkins.yaml
-    networks:
-      - jenkins-network
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/login"]
       interval: 30s
@@ -40,39 +38,11 @@ services:
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - agent_workspace:/home/jenkins/workspace
-      - ~/.ssh:/home/jenkins/.ssh:ro
-    networks:
-      - jenkins-network
     profiles:
       - agent
-
-  nginx:
-    image: nginx:alpine
-    container_name: nomad-consul-nginx
-    restart: unless-stopped
-    ports:
-      - "80:80"
-      - "443:443"
-    volumes:
-      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
-      - ./nginx/conf.d:/etc/nginx/conf.d:ro
-      - ./nginx/ssl:/etc/nginx/ssl:ro
-    depends_on:
-      - jenkins
-    networks:
-      - jenkins-network
-    profiles:
-      - reverse-proxy
 
 volumes:
   jenkins_home:
     driver: local
   agent_workspace:
     driver: local
-
-networks:
-  jenkins-network:
-    driver: bridge
-    ipam:
-      config:
-        - subnet: 172.20.0.0/16

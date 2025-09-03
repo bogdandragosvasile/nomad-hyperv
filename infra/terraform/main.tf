@@ -1,75 +1,7 @@
 # Main Terraform configuration for Nomad + Consul cluster on Hyper-V
+# Terraform and provider configuration is in provider.tf
 
-terraform {
-  required_version = ">= 1.0"
-  required_providers {
-    hyperv = {
-      source  = "taliesins/hyperv"
-      version = "~> 1.0"
-    }
-  }
-}
-
-# Configure Hyper-V provider
-provider "hyperv" {
-  # Provider configuration for Hyper-V
-  # No additional configuration needed for local Hyper-V
-}
-
-# Variables
-variable "vm_count" {
-  description = "Number of VMs to create for each role"
-  type        = number
-  default     = 3
-}
-
-variable "vm_memory" {
-  description = "Memory allocation for VMs in MB"
-  type        = map(number)
-  default = {
-    consul_server = 4096
-    nomad_server  = 4096
-    nomad_client  = 8192
-  }
-}
-
-variable "vm_cpu" {
-  description = "CPU allocation for VMs"
-  type        = map(number)
-  default = {
-    consul_server = 2
-    nomad_server  = 2
-    nomad_client  = 4
-  }
-}
-
-variable "vm_storage" {
-  description = "Storage allocation for VMs in GB"
-  type        = map(number)
-  default = {
-    consul_server = 40
-    nomad_server  = 40
-    nomad_client  = 60
-  }
-}
-
-variable "network_switch" {
-  description = "Name of the Hyper-V external switch"
-  type        = string
-  default     = "External Switch"
-}
-
-variable "base_image_path" {
-  description = "Path to the base Ubuntu 22.04 VHDX image"
-  type        = string
-  default     = "C:\\Images\\ubuntu-22.04-server-amd64.vhdx"
-}
-
-variable "vm_ip_range" {
-  description = "IP range for VMs"
-  type        = string
-  default     = "192.168.1.100"
-}
+# Variables are defined in variables.tf
 
 # Data sources
 data "hyperv_network_switch" "external" {
