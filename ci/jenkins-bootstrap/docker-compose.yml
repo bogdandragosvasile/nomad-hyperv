@@ -11,6 +11,10 @@ services:
     environment:
       - JENKINS_OPTS=--httpPort=8080
       - JAVA_OPTS=-Djenkins.install.runSetupWizard=false
+      - JENKINS_UC=https://updates.jenkins.io
+      - JENKINS_UC_DOWNLOAD=https://updates.jenkins.io/download
+      - JENKINS_UC_EXPERIMENTAL=https://updates.jenkins.io/experimental
+      - JENKINS_INCREMENTALS_REPO_MIRROR=https://repo.jenkins-ci.org/incrementals/
     volumes:
       - jenkins_home:/var/jenkins_home
       - /var/run/docker.sock:/var/run/docker.sock
@@ -26,7 +30,7 @@ services:
 
   jenkins-agent:
     build:
-      context: ..
+      context: ../..
       dockerfile: ci/Dockerfile.agent
     container_name: nomad-consul-jenkins-agent
     restart: unless-stopped

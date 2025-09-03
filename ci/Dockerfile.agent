@@ -4,10 +4,9 @@ FROM ubuntu:22.04
 # Set environment variables
 ENV DEBIAN_FRONTEND=noninteractive
 ENV TERRAFORM_VERSION=1.5.0
-ENV ANSIBLE_VERSION=2.15.0
+ENV ANSIBLE_VERSION=9.7.0
 ENV NOMAD_VERSION=1.6.0
 ENV CONSUL_VERSION=1.16.0
-ENV DOCKER_VERSION=24.0.5
 
 # Install system dependencies
 RUN apt-get update && apt-get install -y \
@@ -34,13 +33,7 @@ RUN apt-get update && apt-get install -y \
     net-tools \
     iputils-ping \
     telnet \
-    && rm -rf /var/lib/apt/lists/*
-
-# Install Docker
-RUN curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg \
-    && echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" | tee /etc/apt/sources.list.d/docker.list > /dev/null \
-    && apt-get update \
-    && apt-get install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin \
+    docker.io \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Terraform
@@ -65,7 +58,7 @@ RUN wget -O /tmp/consul.zip "https://releases.hashicorp.com/consul/${CONSUL_VERS
     && rm /tmp/consul.zip \
     && consul version
 
-# Install kubectl (optional)
+# Install kubectl
 RUN curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl" \
     && chmod +x kubectl \
     && mv kubectl /usr/local/bin \
@@ -74,14 +67,9 @@ RUN curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/s
 # Install additional Python packages
 RUN pip3 install --no-cache-dir \
     boto3 \
-    azure-mgmt-compute \
-    google-cloud-compute \
-    pywinrm \
-    pymongo \
-    redis \
     requests \
     jinja2 \
-    yaml
+    PyYAML
 
 # Create jenkins user
 RUN useradd -m -s /bin/bash jenkins \
@@ -102,27 +90,13 @@ RUN mkdir -p /etc/ansible \
     && echo "[defaults]" > /etc/ansible/ansible.cfg \
     && echo "host_key_checking = False" >> /etc/ansible/ansible.cfg \
     && echo "stdout_callback = yaml" >> /etc/ansible/ansible.cfg \
-    && echo "gathering = smart" >> /etc/ansible/ansible.cfg \
-    && echo "fact_caching = memory" >> /etc/ansible/ansible.cfg
+    && echo "gathering = smart" >> /etc/ansible/ansible.cfg
 
 # Create Terraform configuration
 RUN mkdir -p /home/jenkins/.terraform.d \
     && echo 'plugin_cache_dir = "$HOME/.terraform.d/plugin-cache"' > /home/jenkins/.terraformrc \
     && chown -R jenkins:jenkins /home/jenkins/.terraform.d \
     && chown jenkins:jenkins /home/jenkins/.terraformrc
-
-# Install additional tools
-RUN curl -L "https://github.com/derailed/k9s/releases/latest/download/k9s_Linux_x86_64.tar.gz" | tar xz \
-    && mv k9s /usr/local/bin \
-    && chmod +x /usr/local/bin/k9s
-
-# Install Helm
-RUN curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
-
-# Install additional monitoring tools
-RUN wget -O /usr/local/bin/promtool "https://github.com/prometheus/prometheus/releases/download/v2.45.0/promtool-2.45.0.linux-amd64.tar.gz" \
-    && tar -xzf /usr/local/bin/promtool -C /usr/local/bin --strip-components=1 promtool \
-    && chmod +x /usr/local/bin/promtool
 
 # Create symlinks for common tools
 RUN ln -sf /usr/bin/python3 /usr/bin/python \
@@ -149,8 +123,6 @@ echo "  - Nomad: $(nomad version)"\n\
 echo "  - Consul: $(consul version)"\n\
 echo "  - Docker: $(docker --version)"\n\
 echo "  - kubectl: $(kubectl version --client)"\n\
-echo "  - Helm: $(helm version --short)"\n\
-echo "  - k9s: $(k9s version)"\n\
 echo "Starting agent..."\n\
 exec "$@"' > /home/jenkins/entrypoint.sh \
     && chmod +x /home/jenkins/entrypoint.sh

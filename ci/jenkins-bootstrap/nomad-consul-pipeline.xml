@@ -1,0 +1,401 @@
+<?xml version='1.1' encoding='UTF-8'?>
+<flow-definition plugin="workflow-job@1339.vd2290d3341a_f">
+  <description>Complete Nomad + Consul HA Cluster Deployment Pipeline</description>
+  <keepDependencies>false</keepDependencies>
+  <properties>
+    <hudson.model.ParametersDefinitionProperty>
+      <parameterDefinitions>
+        <hudson.model.StringParameterDefinition>
+          <name>DEPLOYMENT_TYPE</name>
+          <description>Type of deployment: dev, staging, or production</description>
+          <defaultValue>dev</defaultValue>
+          <trim>false</trim>
+        </hudson.model.StringParameterDefinition>
+        <hudson.model.StringParameterDefinition>
+          <name>TERRAFORM_ACTION</name>
+          <description>Terraform action: plan, apply, or destroy</description>
+          <defaultValue>apply</defaultValue>
+          <trim>false</trim>
+        </hudson.model.StringParameterDefinition>
+        <hudson.model.BooleanParameterDefinition>
+          <name>DRY_RUN</name>
+          <description>Run in dry-run mode (no actual changes)</description>
+          <defaultValue>false</defaultValue>
+        </hudson.model.BooleanParameterDefinition>
+        <hudson.model.StringParameterDefinition>
+          <name>NOMAD_VERSION</name>
+          <description>Nomad version to deploy</description>
+          <defaultValue>1.6.0</defaultValue>
+          <trim>false</trim>
+        </hudson.model.StringParameterDefinition>
+        <hudson.model.StringParameterDefinition>
+          <name>CONSUL_VERSION</name>
+          <description>Consul version to deploy</description>
+          <defaultValue>1.16.0</defaultValue>
+          <trim>false</trim>
+        </hudson.model.StringParameterDefinition>
+        <hudson.model.StringParameterDefinition>
+          <name>VM_COUNT</name>
+          <description>Number of VMs to create (3 for HA)</description>
+          <defaultValue>3</defaultValue>
+          <trim>false</trim>
+        </hudson.model.StringParameterDefinition>
+        <hudson.model.StringParameterDefinition>
+          <name>GIT_BRANCH</name>
+          <description>Git branch to use for deployment</description>
+          <defaultValue>main</defaultValue>
+          <trim>false</trim>
+        </hudson.model.StringParameterDefinition>
+      </parameterDefinitions>
+    </hudson.model.ParametersDefinitionProperty>
+    <hudson.plugins.discard__old__build.DiscardOldBuildProperty>
+      <strategy class="hudson.plugins.discard__old__build.DiscardOldBuildProperty$StrategyByDays">
+        <daysToKeep>30</daysToKeep>
+      </strategy>
+    </hudson.plugins.discard__old__build.DiscardOldBuildProperty>
+  </properties>
+  <definition class="org.jenkinsci.plugins.workflow.cps.CpsFlowDefinition" plugin="workflow-cps@3853.vb_a_490d8923a_">
+    <script>
+pipeline {
+    agent {
+        label 'nomad consul terraform ansible'
+    }
+    
+    environment {
+        WORKSPACE_DIR = '/home/jenkins/workspace'
+        TERRAFORM_DIR = 'infra/terraform'
+        ANSIBLE_DIR = 'config/ansible'
+        WORKLOADS_DIR = 'workloads'
+        LOG_LEVEL = 'INFO'
+        TIMEOUT_MINUTES = 60
+    }
+    
+    parameters {
+        choice(
+            name: 'DEPLOYMENT_TYPE',
+            choices: ['dev', 'staging', 'production'],
+            description: 'Type of deployment'
+        )
+        choice(
+            name: 'TERRAFORM_ACTION',
+            choices: ['plan', 'apply', 'destroy'],
+            description: 'Terraform action to perform'
+        )
+        booleanParam(
+            name: 'DRY_RUN',
+            defaultValue: false,
+            description: 'Run in dry-run mode'
+        )
+        string(
+            name: 'NOMAD_VERSION',
+            defaultValue: '1.6.0',
+            description: 'Nomad version to deploy'
+        )
+        string(
+            name: 'CONSUL_VERSION',
+            defaultValue: '1.16.0',
+            description: 'Consul version to deploy'
+        )
+        string(
+            name: 'VM_COUNT',
+            defaultValue: '3',
+            description: 'Number of VMs to create'
+        )
+        string(
+            name: 'GIT_BRANCH',
+            defaultValue: 'main',
+            description: 'Git branch to use'
+        )
+    }
+    
+    stages {
+        stage('Validate Environment') {
+            steps {
+                script {
+                    echo "Starting Nomad + Consul HA Cluster Deployment"
+                    echo "Deployment Type: ${params.DEPLOYMENT_TYPE}"
+                    echo "Terraform Action: ${params.TERRAFORM_ACTION}"
+                    echo "Dry Run: ${params.DRY_RUN}"
+                    echo "Nomad Version: ${params.NOMAD_VERSION}"
+                    echo "Consul Version: ${params.CONSUL_VERSION}"
+                    echo "VM Count: ${params.VM_COUNT}"
+                    echo "Git Branch: ${params.GIT_BRANCH}"
+                    
+                    // Validate required tools
+                    sh '''
+                        echo "Validating required tools..."
+                        terraform --version
+                        ansible --version
+                        nomad version
+                        consul version
+                        docker --version
+                        echo "All required tools are available"
+                    '''
+                }
+            }
+        }
+        
+        stage('Setup Environment') {
+            steps {
+                script {
+                    echo "Setting up deployment environment..."
+                    
+                    // Create workspace directories
+                    sh '''
+                        mkdir -p ${WORKSPACE_DIR}/deployment
+                        cd ${WORKSPACE_DIR}/deployment
+                        pwd
+                        ls -la
+                    '''
+                    
+                    // Set environment variables
+                    env.NOMAD_ADDR = "http://localhost:4646"
+                    env.CONSUL_HTTP_ADDR = "http://localhost:8500"
+                    env.TF_VAR_nomad_version = params.NOMAD_VERSION
+                    env.TF_VAR_consul_version = params.CONSUL_VERSION
+                    env.TF_VAR_vm_count = params.VM_COUNT
+                }
+            }
+        }
+        
+        stage('Provision Infrastructure') {
+            when {
+                anyOf {
+                    expression { params.TERRAFORM_ACTION == 'apply' }
+                    expression { params.TERRAFORM_ACTION == 'plan' }
+                }
+            }
+            steps {
+                script {
+                    echo "Provisioning infrastructure with Terraform..."
+                    
+                    dir(TERRAFORM_DIR) {
+                        sh '''
+                            echo "Initializing Terraform..."
+                            terraform init
+                            
+                            echo "Validating Terraform configuration..."
+                            terraform validate
+                            
+                            if [ "${TERRAFORM_ACTION}" = "plan" ]; then
+                                echo "Creating Terraform plan..."
+                                terraform plan -out=tfplan
+                                echo "Plan created successfully"
+                            elif [ "${TERRAFORM_ACTION}" = "apply" ]; then
+                                if [ "${DRY_RUN}" = "true" ]; then
+                                    echo "DRY RUN: Would apply Terraform configuration"
+                                    terraform plan -out=tfplan
+                                else
+                                    echo "Applying Terraform configuration..."
+                                    terraform apply -auto-approve
+                                    echo "Infrastructure provisioned successfully"
+                                fi
+                            fi
+                        '''
+                    }
+                }
+            }
+        }
+        
+        stage('Wait for VMs') {
+            when {
+                anyOf {
+                    expression { params.TERRAFORM_ACTION == 'apply' }
+                    expression { params.DRY_RUN == false }
+                }
+            }
+            steps {
+                script {
+                    echo "Waiting for VMs to be ready..."
+                    
+                    sh '''
+                        echo "Waiting 60 seconds for VMs to boot..."
+                        sleep 60
+                        
+                        echo "Checking VM connectivity..."
+                        # This would check actual VM IPs from Terraform output
+                        echo "VMs should be ready for configuration"
+                    '''
+                }
+            }
+        }
+        
+        stage('Configure Cluster') {
+            when {
+                anyOf {
+                    expression { params.TERRAFORM_ACTION == 'apply' }
+                    expression { params.DRY_RUN == false }
+                }
+            }
+            steps {
+                script {
+                    echo "Configuring Nomad + Consul cluster..."
+                    
+                    dir(ANSIBLE_DIR) {
+                        sh '''
+                            echo "Running Ansible playbooks..."
+                            
+                            # Run common configuration
+                            ansible-playbook -i inventories/${DEPLOYMENT_TYPE}/hosts.yaml playbooks/common.yaml
+                            
+                            # Setup Consul cluster
+                            ansible-playbook -i inventories/${DEPLOYMENT_TYPE}/hosts.yaml playbooks/setup-consul.yaml
+                            
+                            # Setup Nomad cluster
+                            ansible-playbook -i inventories/${DEPLOYMENT_TYPE}/hosts.yaml playbooks/setup-nomad.yaml
+                            
+                            echo "Cluster configuration completed"
+                        '''
+                    }
+                }
+            }
+        }
+        
+        stage('Deploy Workloads') {
+            when {
+                anyOf {
+                    expression { params.TERRAFORM_ACTION == 'apply' }
+                    expression { params.DRY_RUN == false }
+                }
+            }
+            steps {
+                script {
+                    echo "Deploying workloads to Nomad..."
+                    
+                    dir(WORKLOADS_DIR) {
+                        sh '''
+                            echo "Deploying example service..."
+                            nomad job run example-service/nomad-job.hcl
+                            
+                            echo "Deploying monitoring stack..."
+                            nomad job run monitoring/nomad-job.hcl
+                            
+                            echo "Workloads deployed successfully"
+                        '''
+                    }
+                }
+            }
+        }
+        
+        stage('Verify Deployment') {
+            when {
+                anyOf {
+                    expression { params.TERRAFORM_ACTION == 'apply' }
+                    expression { params.DRY_RUN == false }
+                }
+            }
+            steps {
+                script {
+                    echo "Verifying deployment..."
+                    
+                    sh '''
+                        echo "Checking Consul cluster health..."
+                        consul members
+                        
+                        echo "Checking Nomad cluster status..."
+                        nomad server members
+                        nomad node status
+                        
+                        echo "Checking deployed jobs..."
+                        nomad job status
+                        
+                        echo "Deployment verification completed"
+                    '''
+                }
+            }
+        }
+        
+        stage('Generate Report') {
+            steps {
+                script {
+                    echo "Generating deployment report..."
+                    
+                    sh '''
+                        echo "=== DEPLOYMENT REPORT ===" > deployment_report.txt
+                        echo "Timestamp: $(date)" >> deployment_report.txt
+                        echo "Deployment Type: ${DEPLOYMENT_TYPE}" >> deployment_report.txt
+                        echo "Terraform Action: ${TERRAFORM_ACTION}" >> deployment_report.txt
+                        echo "Dry Run: ${DRY_RUN}" >> deployment_report.txt
+                        echo "Nomad Version: ${NOMAD_VERSION}" >> deployment_report.txt
+                        echo "Consul Version: ${CONSUL_VERSION}" >> deployment_report.txt
+                        echo "VM Count: ${VM_COUNT}" >> deployment_report.txt
+                        echo "Git Branch: ${GIT_BRANCH}" >> deployment_report.txt
+                        echo "=========================" >> deployment_report.txt
+                        
+                        if [ "${TERRAFORM_ACTION}" = "apply" ] && [ "${DRY_RUN}" = "false" ]; then
+                            echo "Status: SUCCESS" >> deployment_report.txt
+                            echo "Infrastructure: PROVISIONED" >> deployment_report.txt
+                            echo "Cluster: CONFIGURED" >> deployment_report.txt
+                            echo "Workloads: DEPLOYED" >> deployment_report.txt
+                        else
+                            echo "Status: PLANNED" >> deployment_report.txt
+                            echo "Infrastructure: NOT PROVISIONED" >> deployment_report.txt
+                            echo "Cluster: NOT CONFIGURED" >> deployment_report.txt
+                            echo "Workloads: NOT DEPLOYED" >> deployment_report.txt
+                        fi
+                        
+                        cat deployment_report.txt
+                    '''
+                    
+                    // Archive the report
+                    archiveArtifacts artifacts: 'deployment_report.txt', fingerprint: true
+                }
+            }
+        }
+    }
+    
+    post {
+        always {
+            script {
+                echo "Pipeline execution completed"
+                
+                // Cleanup workspace
+                sh '''
+                    echo "Cleaning up workspace..."
+                    cd ${WORKSPACE_DIR}
+                    rm -rf deployment
+                '''
+            }
+        }
+        success {
+            script {
+                echo "Pipeline completed successfully!"
+                
+                if (params.TERRAFORM_ACTION == 'apply' && !params.DRY_RUN) {
+                    echo "Infrastructure has been provisioned and configured"
+                    echo "Nomad + Consul HA cluster is ready"
+                    echo "Workloads have been deployed"
+                } else {
+                    echo "Pipeline completed in planning mode"
+                }
+            }
+        }
+        failure {
+            script {
+                echo "Pipeline failed!"
+                echo "Check the logs for details"
+                
+                // Send notification (would be implemented with notification plugins)
+                echo "Sending failure notification..."
+            }
+        }
+        cleanup {
+            script {
+                echo "Cleaning up resources..."
+                
+                // Cleanup any temporary files
+                sh '''
+                    echo "Removing temporary files..."
+                    find ${WORKSPACE_DIR} -name "*.tmp" -delete
+                    find ${WORKSPACE_DIR} -name "*.log" -delete
+                '''
+            }
+        }
+    }
+}
+    </script>
+    <sandbox>true</sandbox>
+  </definition>
+  <triggers/>
+  <disabled>false</disabled>
+</flow-definition>

@@ -1,0 +1,45 @@
+jenkins:
+  systemMessage: "Nomad + Consul HA Cluster Jenkins Server"
+  numExecutors: 0
+  scmCheckoutRetryCount: 3
+  mode: NORMAL
+  
+  securityRealm:
+    local:
+      allowsSignup: false
+      users:
+        - id: "admin"
+          password: "admin"
+
+  authorizationStrategy:
+    globalMatrix:
+      permissions:
+        - "Overall/Administer:admin"
+        - "Overall/Read:authenticated"
+
+  globalNodeProperties:
+    - envVars:
+        env:
+          - key: "NOMAD_ADDR"
+            value: "http://localhost:4646"
+          - key: "CONSUL_HTTP_ADDR"
+            value: "http://localhost:8500"
+
+  nodes:
+    - permanent:
+        name: "nomad-consul-agent"
+        type: "hudson.slaves.DumbSlave"
+        remoteFS: "/home/jenkins/workspace"
+        numExecutors: 2
+        labelString: "nomad consul terraform ansible"
+        mode: "NORMAL"
+        retentionStrategy:
+          "hudson.slaves.RetentionStrategy$Always":
+            keepUpWhenActive: false
+        launcher:
+          "hudson.slaves.JNLPLauncher":
+            workDirSettings:
+              disabled: false
+              workDirPath: "/home/jenkins/workspace"
+              internalDir: "remoting"
+              failIfWorkDirIsMissing: false
