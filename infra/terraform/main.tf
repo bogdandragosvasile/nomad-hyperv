@@ -148,6 +148,8 @@ resource "hyperv_machine_instance" "start_consul_servers" {
   
   depends_on = [hyperv_machine_instance.consul_servers]
   
+  dynamic_memory = true
+  
   state = "Running"
 }
 
@@ -158,6 +160,8 @@ resource "hyperv_machine_instance" "start_nomad_servers" {
   
   depends_on = [hyperv_machine_instance.nomad_servers]
   
+  dynamic_memory = true
+  
   state = "Running"
 }
 
@@ -167,6 +171,8 @@ resource "hyperv_machine_instance" "start_nomad_clients" {
   name = hyperv_machine_instance.nomad_clients[count.index].name
   
   depends_on = [hyperv_machine_instance.nomad_clients]
+  
+  dynamic_memory = true
   
   state = "Running"
 }
