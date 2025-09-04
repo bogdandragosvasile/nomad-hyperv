@@ -1,6 +1,6 @@
 pipeline {
     agent {
-        label 'nomad-consul-agent'
+        label params.HYBRID_MODE == 'false' ? 'windows-hyperv-agent' : 'nomad-consul-agent'
     }
     
     environment {
