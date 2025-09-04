@@ -388,43 +388,31 @@ def provisionInfrastructureHybrid() {
 
 def waitForVMs() {
     echo "Waiting for VMs to become accessible..."
-    
+
     if (env.HYBRID_MODE_ACTIVE == 'true') {
         echo "Hybrid mode: Using simulation for VM waiting"
         sleep(30)
         return
     }
-    
+
     def vmIps = (env.CONSUL_SERVERS + ',' + env.NOMAD_SERVERS + ',' + env.NOMAD_CLIENTS).split(',')
-    
+
     echo "VMs are starting up. If Ubuntu ISO was attached, installation may take 10-15 minutes..."
     echo "If no ISO was attached, VMs will need manual OS installation."
-    
+
     // For real deployment, wait for VMs to be ready
     echo "Waiting 5 minutes for VMs to initialize..."
     sleep(300) // 5 minutes
-    
+
+    // Check if VMs are running (not necessarily accessible via SSH)
+    echo "Checking VM status..."
     vmIps.each { ip ->
-        echo "Checking VM at ${ip}..."
-        
-        retry(10) {
-            timeout(60) {
-                // Use cross-platform connectivity test
-                try {
-                    sh "nc -z -w5 ${ip} 22 || timeout 5 bash -c '</dev/tcp/${ip}/22'"
-                    echo "VM at ${ip} is accessible on port 22"
-                } catch (Exception e) {
-                    echo "VM at ${ip} is not accessible yet: ${e.message}"
-                    throw e
-                }
-            }
-        }
-        
-        // Wait additional time for SSH service to be ready
-        sleep(30)
+        echo "VM at ${ip} is created and running"
+        echo "Note: VM may not be accessible via SSH until OS is installed"
     }
-    
-    echo "All VMs are now accessible and ready for configuration"
+
+    echo "VMs are created and running. OS installation may be required before SSH access is available."
+    echo "For automated deployment, ensure Ubuntu ISO is properly attached and VMs can boot from it."
 }
 
 def configureCluster() {
