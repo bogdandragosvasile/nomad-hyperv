@@ -309,7 +309,7 @@ def provisionInfrastructure() {
         if (params.DRY_RUN) {
             echo "DRY RUN: Would run PowerShell script for Hyper-V VMs"
         } else {
-            powershell '.\create-hyperv-vms.ps1'
+            powershell '.\\create-hyperv-vms.ps1'
         }
         
         // Wait for VMs to be ready
