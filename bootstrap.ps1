@@ -302,18 +302,18 @@ function Start-JenkinsEnvironment {
 function Show-Status {
     Write-Success "Jenkins environment is ready!"
     Write-Host ""
-    Write-Host "🌐 Access URLs:" -ForegroundColor $Colors.White
+    Write-Host "Access URLs:" -ForegroundColor $Colors.White
     Write-Host "  Jenkins UI: http://localhost:8080" -ForegroundColor $Colors.White
     Write-Host "  Jenkins via Nginx: http://localhost (if reverse proxy is enabled)" -ForegroundColor $Colors.White
     Write-Host ""
-    Write-Host "🔑 Default Credentials:" -ForegroundColor $Colors.White
+    Write-Host "Default Credentials:" -ForegroundColor $Colors.White
     Write-Host "  Username: admin" -ForegroundColor $Colors.White
     Write-Host "  Password: admin" -ForegroundColor $Colors.White
     Write-Host ""
-    Write-Host "📊 Status:" -ForegroundColor $Colors.White
+    Write-Host "Status:" -ForegroundColor $Colors.White
     docker-compose -f ci\jenkins-bootstrap\docker-compose.yml ps
     Write-Host ""
-    Write-Host "📝 Useful Commands:" -ForegroundColor $Colors.White
+    Write-Host "Useful Commands:" -ForegroundColor $Colors.White
     Write-Host "  Stop: .\stop.ps1" -ForegroundColor $Colors.White
     Write-Host "  Restart: .\restart.ps1" -ForegroundColor $Colors.White
     Write-Host "  Logs: docker-compose -f ci\jenkins-bootstrap\docker-compose.yml logs -f" -ForegroundColor $Colors.White
@@ -322,8 +322,8 @@ function Show-Status {
 
 # Main execution
 function Main {
-    Write-Host "🚀 Nomad + Consul Jenkins Environment Bootstrap (Windows)" -ForegroundColor $Colors.Green
-    Write-Host "=========================================================" -ForegroundColor $Colors.Green
+    Write-Host "Nomad + Consul Jenkins Environment Bootstrap (Windows)" -ForegroundColor $Colors.Green
+    Write-Host "=======================================================" -ForegroundColor $Colors.Green
     Write-Host ""
     
     if (-not $SkipPrerequisites) {
@@ -341,7 +341,7 @@ function Main {
     Show-Status
     
     Write-Host ""
-    Write-Success "Bootstrap completed successfully! 🎉"
+    Write-Success "Bootstrap completed successfully!"
 }
 
 # Run main function
