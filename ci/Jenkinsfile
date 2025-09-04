@@ -302,14 +302,14 @@ def setupEnvironment() {
 }
 
 def provisionInfrastructure() {
-    echo "Provisioning infrastructure with Ansible..."
+    echo "Provisioning infrastructure with PowerShell..."
     
-    dir('infra/ansible') {
-        // Run Ansible playbook to create Hyper-V VMs
+    dir('infra/scripts') {
+        // Run PowerShell script to create Hyper-V VMs
         if (params.DRY_RUN) {
-            echo "DRY RUN: Would run Ansible playbook for Hyper-V VMs"
+            echo "DRY RUN: Would run PowerShell script for Hyper-V VMs"
         } else {
-            sh 'ansible-playbook -i localhost, hyperv-vms.yml --connection=local'
+            powershell '.\create-hyperv-vms.ps1'
         }
         
         // Wait for VMs to be ready
