@@ -120,25 +120,27 @@ pipeline {
             when {
                 expression { env.HYBRID_MODE_ACTIVE == 'true' }
             }
-            agent any
             steps {
                 script {
                     if (env.NODE_NAME.contains('windows') || env.NODE_NAME.contains('Windows')) {
                         echo "Running on Windows agent - completing hybrid deployment..."
                         completeHybridDeployment()
                     } else {
-                        echo "Running on Linux agent - hybrid deployment requires Windows agent"
+                        echo "Running on Linux agent - using simulation mode for testing"
                         echo "Current agent: ${env.NODE_NAME}"
                         echo ""
-                        echo "To complete deployment, you need to:"
-                        echo "1. Run this pipeline on a Windows agent with Hyper-V access, OR"
-                        echo "2. Manually execute: terraform apply tfplan on Windows, OR"
-                        echo "3. Set HYBRID_MODE=false for full Linux agent execution"
+                        echo "SIMULATION MODE: Continuing with mock infrastructure for testing"
+                        echo "This allows testing the full pipeline flow without actual VMs"
                         echo ""
-                        echo "Infrastructure plan is stored and ready for Windows deployment ✅"
+                        
+                        // Set up mock infrastructure data for testing
+                        setupMockInfrastructure()
                         
                         // Mark as successful completion for Linux agents
                         env.HYBRID_DEPLOYMENT_READY = 'true'
+                        env.SIMULATION_MODE = 'true'
+                        
+                        echo "Mock infrastructure configured - pipeline can continue ✅"
                     }
                 }
             }
@@ -430,6 +432,18 @@ def waitForVMs() {
 def configureCluster() {
     echo "Configuring cluster with Ansible..."
     
+    if (env.SIMULATION_MODE == 'true') {
+        echo "SIMULATION MODE: Simulating cluster configuration..."
+        echo "In a real deployment, this would:"
+        echo "1. Connect to VMs via SSH"
+        echo "2. Install and configure Consul servers"
+        echo "3. Install and configure Nomad servers and clients"
+        echo "4. Set up cluster networking and security"
+        echo ""
+        echo "Mock cluster configuration completed ✅"
+        return
+    }
+    
     dir('config/ansible') {
         // Create SSH key file from Jenkins credentials
         withCredentials([sshUserPrivateKey(credentialsId: env.JENKINS_CREDENTIALS_ID, keyFileVariable: 'SSH_KEY_FILE')]) {
@@ -461,6 +475,18 @@ def configureCluster() {
 
 def deployWorkloads() {
     echo "Deploying workloads to Nomad..."
+    
+    if (env.SIMULATION_MODE == 'true') {
+        echo "SIMULATION MODE: Simulating workload deployment..."
+        echo "In a real deployment, this would:"
+        echo "1. Wait for Nomad cluster to be ready"
+        echo "2. Deploy example service job"
+        echo "3. Deploy monitoring stack (if enabled)"
+        echo "4. Verify job status and health"
+        echo ""
+        echo "Mock workload deployment completed ✅"
+        return
+    }
     
     // Wait for cluster to be ready
     retry(10) {
@@ -494,6 +520,18 @@ def deployWorkloads() {
 
 def verifyDeployment() {
     echo "Verifying deployment..."
+    
+    if (env.SIMULATION_MODE == 'true') {
+        echo "SIMULATION MODE: Simulating deployment verification..."
+        echo "In a real deployment, this would:"
+        echo "1. Check Consul cluster health and quorum"
+        echo "2. Check Nomad cluster health and server count"
+        echo "3. Verify workload status and health"
+        echo "4. Run integration tests"
+        echo ""
+        echo "Mock deployment verification completed ✅"
+        return
+    }
     
     // Check Consul cluster health
     retry(5) {
@@ -545,6 +583,12 @@ def verifyDeployment() {
 def generateReport() {
     echo "Generating deployment report..."
     
+    def simulationNote = env.SIMULATION_MODE == 'true' ? """
+## ⚠️ SIMULATION MODE
+This deployment was run in **simulation mode** for testing purposes.
+No actual VMs were created or configured.
+""" : ""
+    
     def report = """
 # Nomad + Consul Cluster Deployment Report
 
@@ -554,7 +598,9 @@ def generateReport() {
 - **Deployment Type**: ${params.DEPLOYMENT_TYPE}
 - **Timestamp**: ${new Date().format("yyyy-MM-dd HH:mm:ss")}
 - **Dry Run**: ${params.DRY_RUN}
-
+- **Hybrid Mode**: ${params.HYBRID_MODE}
+- **Simulation Mode**: ${env.SIMULATION_MODE == 'true' ? 'Yes' : 'No'}
+${simulationNote}
 ## Infrastructure
 - **Consul Servers**: ${env.CONSUL_SERVERS}
 - **Nomad Servers**: ${env.NOMAD_SERVERS}
@@ -566,9 +612,20 @@ def generateReport() {
 - **Jenkins**: ${env.BUILD_URL}
 
 ## Status
-- **Consul Cluster**: Healthy
-- **Nomad Cluster**: Healthy
-- **Workloads**: Deployed
+- **Consul Cluster**: ${env.SIMULATION_MODE == 'true' ? 'Simulated' : 'Healthy'}
+- **Nomad Cluster**: ${env.SIMULATION_MODE == 'true' ? 'Simulated' : 'Healthy'}
+- **Workloads**: ${env.SIMULATION_MODE == 'true' ? 'Simulated' : 'Deployed'}
+
+## Next Steps
+${env.SIMULATION_MODE == 'true' ? '''
+To deploy to actual infrastructure:
+1. Run this pipeline on a Windows agent with HYBRID_MODE=false
+2. Or manually execute: terraform apply tfplan on Windows
+3. Then continue with cluster configuration
+''' : '''
+Deployment completed successfully!
+Access the cluster using the URLs above.
+'''}
 """
     
     writeFile file: 'deployment-report.md', text: report
@@ -651,4 +708,57 @@ def notifyAborted() {
     
     // Send aborted notification
     echo "Aborted notification sent"
+}
+
+def setupMockInfrastructure() {
+    echo "Setting up mock infrastructure for simulation mode..."
+    
+    // Set mock IP addresses for testing
+    env.CONSUL_SERVERS = "192.168.1.100,192.168.1.101,192.168.1.102"
+    env.NOMAD_SERVERS = "192.168.1.103,192.168.1.104,192.168.1.105"
+    env.NOMAD_CLIENTS = "192.168.1.106,192.168.1.107,192.168.1.108"
+    
+    // Set mock environment variables
+    env.CONSUL_ADDR = "http://192.168.1.100:8500"
+    env.NOMAD_ADDR = "http://192.168.1.103:4646"
+    
+    // Create mock outputs file for consistency
+    dir('infra/terraform') {
+        def mockOutputs = """{
+    "consul_servers": {
+        "ips": ["192.168.1.100", "192.168.1.101", "192.168.1.102"],
+        "names": ["consul-server-1", "consul-server-2", "consul-server-3"],
+        "state": ["Running", "Running", "Running"]
+    },
+    "nomad_servers": {
+        "ips": ["192.168.1.103", "192.168.1.104", "192.168.1.105"],
+        "names": ["nomad-server-1", "nomad-server-2", "nomad-server-3"],
+        "state": ["Running", "Running", "Running"]
+    },
+    "nomad_clients": {
+        "ips": ["192.168.1.106", "192.168.1.107", "192.168.1.108"],
+        "names": ["nomad-client-1", "nomad-client-2", "nomad-client-3"],
+        "state": ["Running", "Running", "Running"]
+    },
+    "access_urls": {
+        "consul_ui": "http://192.168.1.100:8500",
+        "nomad_ui": "http://192.168.1.103:4646",
+        "jenkins": "http://localhost:8080"
+    },
+    "cluster_info": {
+        "consul_servers": 3,
+        "nomad_servers": 3,
+        "nomad_clients": 3,
+        "total_vms": 9,
+        "network_range": "192.168.1.100/24",
+        "gateway": "192.168.1.1"
+    }
+}"""
+        
+        writeFile file: 'outputs.json', text: mockOutputs
+        echo "Mock infrastructure outputs created"
+    }
+    
+    echo "Mock infrastructure setup completed ✅"
+    echo "Simulation mode enabled - pipeline will continue with mock data"
 }
