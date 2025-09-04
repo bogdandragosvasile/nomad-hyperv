@@ -95,7 +95,8 @@ function Create-VM {
             
             Write-Host "✅ Created VM: $VMName" -ForegroundColor Green
         } else {
-            Write-Host "⚠️  VM already exists: $VMName" -ForegroundColor Yellow
+            Write-Host "⚠️  VM already exists: $VMName, checking storage configuration..." -ForegroundColor Yellow
+            Fix-ExistingVMStorage -VMName $VMName -VHDPath $VHDPath
         }
     } catch {
         Write-Host "❌ Failed to create VM $VMName : $($_.Exception.Message)" -ForegroundColor Red
@@ -227,14 +228,7 @@ try {
     foreach ($vm in $allVMs) {
         $vmPath = Join-Path $BasePath $vm.Name
         $vhdPath = Join-Path $vmPath "$($vm.Name).vhdx"
-        
-        # Check if VM already exists
-        if (Get-VM -Name $vm.Name -ErrorAction SilentlyContinue) {
-            Write-Host "VM already exists: $($vm.Name), checking storage configuration..." -ForegroundColor Yellow
-            Fix-ExistingVMStorage -VMName $vm.Name -VHDPath $vhdPath
-        } else {
-            Create-VM -VMName $vm.Name -VMPath $vmPath -VHDPath $vhdPath -IP $vm.IP
-        }
+        Create-VM -VMName $vm.Name -VMPath $vmPath -VHDPath $vhdPath -IP $vm.IP
     }
     
     # Start all VMs
