@@ -110,7 +110,7 @@ pipeline {
                     echo "Required: Windows agent for Hyper-V VM creation"
                     
                     // Store the plan for later use
-                    archiveArtifacts artifacts: 'tfplan', fingerprint: true
+                    archiveArtifacts artifacts: 'infra/terraform/tfplan', fingerprint: true
                     echo "Terraform plan archived for Windows deployment"
                 }
             }
@@ -370,7 +370,7 @@ def provisionInfrastructureHybrid() {
             echo "or set HYBRID_MODE=false for full Linux agent execution"
             
             // Store plan for later use
-            archiveArtifacts artifacts: 'tfplan', fingerprint: true
+            archiveArtifacts artifacts: 'infra/terraform/tfplan', fingerprint: true
             
             // Set environment variables for next stages
             env.INFRASTRUCTURE_PLANNED = 'true'
