@@ -397,12 +397,12 @@ def waitForVMs() {
     
     def vmIps = (env.CONSUL_SERVERS + ',' + env.NOMAD_SERVERS + ',' + env.NOMAD_CLIENTS).split(',')
     
-    echo "VMs are starting up and installing Ubuntu. This may take 10-15 minutes..."
-    echo "The VMs will automatically install Ubuntu from the attached ISO."
+    echo "VMs are starting up. If Ubuntu ISO was attached, installation may take 10-15 minutes..."
+    echo "If no ISO was attached, VMs will need manual OS installation."
     
-    // For real deployment, wait longer for Ubuntu installation
-    echo "Waiting 15 minutes for Ubuntu installation to complete..."
-    sleep(900) // 15 minutes
+    // For real deployment, wait for VMs to be ready
+    echo "Waiting 5 minutes for VMs to initialize..."
+    sleep(300) // 5 minutes
     
     vmIps.each { ip ->
         echo "Checking VM at ${ip}..."

@@ -8,7 +8,7 @@ param(
     [int]$CpuCount = 2,
     [string]$DiskSize = "40GB",
     [string]$IsoPath = "C:\Hyper-V\ISOs\ubuntu-22.04.3-server-amd64.iso",
-    [string]$IsoUrl = "https://releases.ubuntu.com/22.04/ubuntu-22.04.3-live-server-amd64.iso",
+    [string]$IsoUrl = "https://releases.ubuntu.com/22.04/ubuntu-22.04.4-live-server-amd64.iso",
     [switch]$DryRun = $false
 )
 
@@ -86,6 +86,8 @@ function Create-VM {
                 Add-VMDvdDrive -VMName $VMName -Path $IsoPath | Out-Null
                 Set-VMFirmware -VMName $VMName -FirstBootDevice (Get-VMDvdDrive -VMName $VMName) | Out-Null
                 Write-Host "✅ Attached ISO to VM: $VMName" -ForegroundColor Green
+            } else {
+                Write-Host "⚠️  No ISO available for VM: $VMName (will need manual OS installation)" -ForegroundColor Yellow
             }
             
             Write-Host "✅ Created VM: $VMName" -ForegroundColor Green
@@ -162,11 +164,11 @@ try {
         Write-Host "✅ Created base directory: $BasePath" -ForegroundColor Green
     }
     
-    # Download Ubuntu ISO
+    # Download Ubuntu ISO (optional)
     $isoDownloaded = Download-UbuntuISO -Url $IsoUrl -Path $IsoPath
     if (-not $isoDownloaded) {
-        Write-Host "❌ Cannot proceed without Ubuntu ISO" -ForegroundColor Red
-        exit 1
+        Write-Host "⚠️  Ubuntu ISO download failed, but continuing with VM creation" -ForegroundColor Yellow
+        Write-Host "VMs will be created without OS and can be configured later" -ForegroundColor Yellow
     }
     
     # Create VM switch
