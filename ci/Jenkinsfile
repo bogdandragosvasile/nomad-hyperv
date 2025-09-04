@@ -302,38 +302,24 @@ def setupEnvironment() {
 }
 
 def provisionInfrastructure() {
-    echo "Provisioning infrastructure with Terraform..."
+    echo "Provisioning infrastructure with Ansible..."
     
-    dir('infra/terraform') {
-        // Initialize Terraform
+    dir('infra/ansible') {
+        // Run Ansible playbook to create Hyper-V VMs
         if (params.DRY_RUN) {
-            echo "DRY RUN: Would initialize Terraform"
+            echo "DRY RUN: Would run Ansible playbook for Hyper-V VMs"
         } else {
-            sh 'terraform init'
+            sh 'ansible-playbook -i localhost, hyperv-vms.yml --connection=local'
         }
         
-        // Plan changes
-        if (params.DRY_RUN) {
-            echo "DRY RUN: Would plan Terraform changes"
-        } else {
-            sh 'terraform plan -out=tfplan'
-        }
+        // Wait for VMs to be ready
+        echo "Waiting for VMs to initialize..."
+        sleep(60)
         
-        // Apply changes
-        if (params.DRY_RUN) {
-            echo "DRY RUN: Would apply Terraform changes"
-        } else {
-            sh 'terraform apply tfplan'
-        }
-        
-        // Get outputs
-        sh 'terraform output -json > outputs.json'
-        
-        // Parse outputs for later use
-        def outputs = readJSON file: 'outputs.json'
-        env.CONSUL_SERVERS = outputs.consul_servers.ips.join(',')
-        env.NOMAD_SERVERS = outputs.nomad_servers.ips.join(',')
-        env.NOMAD_CLIENTS = outputs.nomad_clients.ips.join(',')
+        // Set environment variables for VM IPs
+        env.CONSUL_SERVERS = "192.168.1.10,192.168.1.11,192.168.1.12"
+        env.NOMAD_SERVERS = "192.168.1.20,192.168.1.21,192.168.1.22"
+        env.NOMAD_CLIENTS = "192.168.1.30,192.168.1.31,192.168.1.32"
     }
     
     echo "Infrastructure provisioning completed"

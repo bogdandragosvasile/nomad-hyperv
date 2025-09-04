@@ -1,0 +1,206 @@
+---
+# Ansible playbook for Hyper-V VM management
+# This playbook creates and configures Hyper-V VMs for Nomad and Consul cluster
+
+- name: Create Hyper-V VMs for Nomad and Consul cluster
+  hosts: localhost
+  gather_facts: false
+  vars:
+    vm_base_path: "C:\\Hyper-V\\VMs"
+    vm_switch_name: "NAT-Switch"
+    vm_memory: 2048
+    vm_cpu_count: 2
+    vm_disk_size: 40GB
+    ubuntu_iso_path: "C:\\Hyper-V\\ISOs\\ubuntu-22.04.3-server-amd64.iso"
+    
+    # VM configurations
+    consul_server_vms:
+      - name: "consul-server-1"
+        ip: "192.168.1.10"
+      - name: "consul-server-2" 
+        ip: "192.168.1.11"
+      - name: "consul-server-3"
+        ip: "192.168.1.12"
+    
+    nomad_server_vms:
+      - name: "nomad-server-1"
+        ip: "192.168.1.20"
+      - name: "nomad-server-2"
+        ip: "192.168.1.21"
+      - name: "nomad-server-3"
+        ip: "192.168.1.22"
+    
+    nomad_client_vms:
+      - name: "nomad-client-1"
+        ip: "192.168.1.30"
+      - name: "nomad-client-2"
+        ip: "192.168.1.31"
+      - name: "nomad-client-3"
+        ip: "192.168.1.32"
+
+  tasks:
+    - name: Ensure Hyper-V module is available
+      win_shell: |
+        if (-not (Get-Module -ListAvailable -Name Hyper-V)) {
+          Write-Error "Hyper-V module not available. Please enable Hyper-V feature."
+          exit 1
+        }
+        Import-Module Hyper-V
+        Write-Host "Hyper-V module loaded successfully"
+
+    - name: Create VM directories
+      win_file:
+        path: "{{ vm_base_path }}"
+        state: directory
+      when: vm_base_path is defined
+
+    - name: Create VM switch if it doesn't exist
+      win_shell: |
+        if (-not (Get-VMSwitch -Name "{{ vm_switch_name }}" -ErrorAction SilentlyContinue)) {
+          New-VMSwitch -Name "{{ vm_switch_name }}" -SwitchType Internal
+          Write-Host "Created VM switch: {{ vm_switch_name }}"
+        } else {
+          Write-Host "VM switch already exists: {{ vm_switch_name }}"
+        }
+
+    - name: Create Consul Server VMs
+      win_shell: |
+        $vmName = "{{ item.name }}"
+        $vmPath = "{{ vm_base_path }}\\$vmName"
+        $vmVhdPath = "$vmPath\\$vmName.vhdx"
+        
+        # Create VM directory
+        if (-not (Test-Path $vmPath)) {
+          New-Item -ItemType Directory -Path $vmPath -Force
+        }
+        
+        # Create VM if it doesn't exist
+        if (-not (Get-VM -Name $vmName -ErrorAction SilentlyContinue)) {
+          New-VM -Name $vmName -Path $vmPath -MemoryStartupBytes {{ vm_memory }}MB -Generation 2
+          Set-VM -Name $vmName -ProcessorCount {{ vm_cpu_count }}
+          
+          # Connect to switch
+          Connect-VMNetworkAdapter -VMName $vmName -SwitchName "{{ vm_switch_name }}"
+          
+          # Create and attach VHD
+          New-VHD -Path $vmVhdPath -SizeBytes {{ vm_disk_size }} -Dynamic
+          Add-VMHardDiskDrive -VMName $vmName -Path $vmVhdPath
+          
+          # Attach ISO if available
+          if (Test-Path "{{ ubuntu_iso_path }}") {
+            Add-VMDvdDrive -VMName $vmName -Path "{{ ubuntu_iso_path }}"
+            Set-VMFirmware -VMName $vmName -FirstBootDevice (Get-VMDvdDrive -VMName $vmName)
+          }
+          
+          Write-Host "Created VM: $vmName"
+        } else {
+          Write-Host "VM already exists: $vmName"
+        }
+      loop: "{{ consul_server_vms }}"
+
+    - name: Create Nomad Server VMs
+      win_shell: |
+        $vmName = "{{ item.name }}"
+        $vmPath = "{{ vm_base_path }}\\$vmName"
+        $vmVhdPath = "$vmPath\\$vmName.vhdx"
+        
+        # Create VM directory
+        if (-not (Test-Path $vmPath)) {
+          New-Item -ItemType Directory -Path $vmPath -Force
+        }
+        
+        # Create VM if it doesn't exist
+        if (-not (Get-VM -Name $vmName -ErrorAction SilentlyContinue)) {
+          New-VM -Name $vmName -Path $vmPath -MemoryStartupBytes {{ vm_memory }}MB -Generation 2
+          Set-VM -Name $vmName -ProcessorCount {{ vm_cpu_count }}
+          
+          # Connect to switch
+          Connect-VMNetworkAdapter -VMName $vmName -SwitchName "{{ vm_switch_name }}"
+          
+          # Create and attach VHD
+          New-VHD -Path $vmVhdPath -SizeBytes {{ vm_disk_size }} -Dynamic
+          Add-VMHardDiskDrive -VMName $vmName -Path $vmVhdPath
+          
+          # Attach ISO if available
+          if (Test-Path "{{ ubuntu_iso_path }}") {
+            Add-VMDvdDrive -VMName $vmName -Path "{{ ubuntu_iso_path }}"
+            Set-VMFirmware -VMName $vmName -FirstBootDevice (Get-VMDvdDrive -VMName $vmName)
+          }
+          
+          Write-Host "Created VM: $vmName"
+        } else {
+          Write-Host "VM already exists: $vmName"
+        }
+      loop: "{{ nomad_server_vms }}"
+
+    - name: Create Nomad Client VMs
+      win_shell: |
+        $vmName = "{{ item.name }}"
+        $vmPath = "{{ vm_base_path }}\\$vmName"
+        $vmVhdPath = "$vmPath\\$vmName.vhdx"
+        
+        # Create VM directory
+        if (-not (Test-Path $vmPath)) {
+          New-Item -ItemType Directory -Path $vmPath -Force
+        }
+        
+        # Create VM if it doesn't exist
+        if (-not (Get-VM -Name $vmName -ErrorAction SilentlyContinue)) {
+          New-VM -Name $vmName -Path $vmPath -MemoryStartupBytes {{ vm_memory }}MB -Generation 2
+          Set-VM -Name $vmName -ProcessorCount {{ vm_cpu_count }}
+          
+          # Connect to switch
+          Connect-VMNetworkAdapter -VMName $vmName -SwitchName "{{ vm_switch_name }}"
+          
+          # Create and attach VHD
+          New-VHD -Path $vmVhdPath -SizeBytes {{ vm_disk_size }} -Dynamic
+          Add-VMHardDiskDrive -VMName $vmName -Path $vmVhdPath
+          
+          # Attach ISO if available
+          if (Test-Path "{{ ubuntu_iso_path }}") {
+            Add-VMDvdDrive -VMName $vmName -Path "{{ ubuntu_iso_path }}"
+            Set-VMFirmware -VMName $vmName -FirstBootDevice (Get-VMDvdDrive -VMName $vmName)
+          }
+          
+          Write-Host "Created VM: $vmName"
+        } else {
+          Write-Host "VM already exists: $vmName"
+        }
+      loop: "{{ nomad_client_vms }}"
+
+    - name: Start all VMs
+      win_shell: |
+        $allVMs = @()
+        $allVMs += "{{ consul_server_vms | map(attribute='name') | list }}"
+        $allVMs += "{{ nomad_server_vms | map(attribute='name') | list }}"
+        $allVMs += "{{ nomad_client_vms | map(attribute='name') | list }}"
+        
+        foreach ($vmName in $allVMs) {
+          $vm = Get-VM -Name $vmName -ErrorAction SilentlyContinue
+          if ($vm -and $vm.State -ne 'Running') {
+            Start-VM -Name $vmName
+            Write-Host "Started VM: $vmName"
+          } else {
+            Write-Host "VM already running or not found: $vmName"
+          }
+        }
+
+    - name: Wait for VMs to be ready
+      win_shell: |
+        Write-Host "Waiting for VMs to initialize..."
+        Start-Sleep -Seconds 30
+        Write-Host "VMs should be ready for configuration"
+
+    - name: Generate inventory file
+      win_template:
+        src: inventory.j2
+        dest: "{{ playbook_dir }}/inventory.ini"
+      vars:
+        consul_servers: "{{ consul_server_vms }}"
+        nomad_servers: "{{ nomad_server_vms }}"
+        nomad_clients: "{{ nomad_client_vms }}"
+
+    - name: Display VM status
+      win_shell: |
+        Write-Host "=== VM Status ==="
+        Get-VM | Where-Object { $_.Name -match "consul-|nomad-" } | Format-Table Name, State, CPUUsage, MemoryAssigned -AutoSize
