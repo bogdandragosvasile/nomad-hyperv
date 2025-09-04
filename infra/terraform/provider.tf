@@ -26,12 +26,9 @@ terraform {
 
 # Configure Hyper-V provider
 provider "hyperv" {
-  # Configure for local Hyper-V with HTTP WinRM
-  host     = "localhost"
-  port     = 5985
-  protocol = "http"
-  username = "bogdan.dragos"
-  password = ""
+  # No additional configuration needed for local Hyper-V
+  # The provider will automatically detect and use the local Hyper-V instance
+  # with WinRM on the default port (5985 for HTTP, 5986 for HTTPS)
   
   # Optional: Specify Hyper-V host if running remotely
   # host = "hyperv-host.example.com"
