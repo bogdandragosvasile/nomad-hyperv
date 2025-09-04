@@ -76,7 +76,8 @@ function Create-VM {
             Connect-VMNetworkAdapter -VMName $VMName -SwitchName $SwitchName | Out-Null
             
             # Create and attach VHD
-            New-VHD -Path $VHDPath -SizeBytes $DiskSize -Dynamic | Out-Null
+            $diskSizeBytes = [uint64]($DiskSize -replace 'GB', '') * 1GB
+            New-VHD -Path $VHDPath -SizeBytes $diskSizeBytes -Dynamic | Out-Null
             Add-VMHardDiskDrive -VMName $VMName -Path $VHDPath | Out-Null
             
             # Attach ISO if available
