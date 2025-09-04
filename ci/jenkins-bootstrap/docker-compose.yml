@@ -43,6 +43,7 @@ services:
       - ~/.ssh:/home/jenkins/.ssh:ro
     networks:
       - jenkins-network
+    entrypoint: ["java", "-jar", "/home/jenkins/workspace/agent.jar", "-url", "http://jenkins:8080/", "-secret", "edde47c76c5c04405fc18c65b4cad82c39afe00cb0a3fb6f779bd8dafd5faa1b", "-name", "nomad-consul-agent", "-webSocket", "-workDir", "/home/jenkins/workspace"]
     profiles:
       - agent
 

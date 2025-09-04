@@ -13,19 +13,65 @@ This repository provides a complete automation pipeline for:
 ## 🚀 Quick Start
 
 ### Prerequisites
-- Windows 11/10 with Hyper-V enabled
-- Docker Desktop
-- Git
+- **Windows**: Windows 11/10 with Hyper-V enabled, Docker Desktop, PowerShell 5.1+
+- **Linux/macOS**: Docker, Docker Compose, Git, OpenSSH
+- **Git**: For cloning the repository
 
 ### One-Command Setup
+
+#### Windows (PowerShell as Administrator)
+```powershell
+# Clone and bootstrap
+git clone <your-repo>
+cd nomad-hyperv
+.\bootstrap.ps1
+
+# Access Jenkins at http://localhost:8080
+# Default credentials: admin/admin
+```
+
+#### Linux/macOS
 ```bash
 # Clone and bootstrap
 git clone <your-repo>
 cd nomad-hyperv
-docker-compose -f ci/jenkins-bootstrap/docker-compose.yml up -d
+chmod +x *.sh
+./bootstrap.sh
 
 # Access Jenkins at http://localhost:8080
-# Run the "Bootstrap Cluster" pipeline
+# Default credentials: admin/admin
+```
+
+### Management Commands
+
+#### Windows
+```powershell
+# Start Jenkins environment
+.\bootstrap.ps1
+
+# Stop Jenkins environment
+.\stop.ps1
+
+# Restart Jenkins environment
+.\restart.ps1
+
+# Check status
+.\status.ps1
+```
+
+#### Linux/macOS
+```bash
+# Start Jenkins environment
+./bootstrap.sh
+
+# Stop Jenkins environment
+./stop.sh
+
+# Restart Jenkins environment
+./restart.sh
+
+# Check status
+./status.sh
 ```
 
 ## 📁 Repository Structure
