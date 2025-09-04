@@ -87,7 +87,10 @@ function Create-VM {
                 Set-VMFirmware -VMName $VMName -FirstBootDevice (Get-VMDvdDrive -VMName $VMName) | Out-Null
                 Write-Host "✅ Attached ISO to VM: $VMName" -ForegroundColor Green
             } else {
+                # Set boot order to hard drive first when no ISO is available
+                Set-VMFirmware -VMName $VMName -FirstBootDevice (Get-VMHardDiskDrive -VMName $VMName) | Out-Null
                 Write-Host "⚠️  No ISO available for VM: $VMName (will need manual OS installation)" -ForegroundColor Yellow
+                Write-Host "✅ Set boot order to hard drive first for VM: $VMName" -ForegroundColor Green
             }
             
             Write-Host "✅ Created VM: $VMName" -ForegroundColor Green
@@ -97,6 +100,52 @@ function Create-VM {
     } catch {
         Write-Host "❌ Failed to create VM $VMName : $($_.Exception.Message)" -ForegroundColor Red
         throw
+    }
+}
+
+# Function to fix existing VM storage
+function Fix-ExistingVMStorage {
+    param([string]$VMName, [string]$VHDPath)
+    
+    Write-Host "Checking storage for existing VM: $VMName" -ForegroundColor Yellow
+    
+    if ($DryRun) {
+        Write-Host "DRY RUN: Would check storage for existing VM $VMName" -ForegroundColor Cyan
+        return
+    }
+    
+    try {
+        $vm = Get-VM -Name $VMName -ErrorAction SilentlyContinue
+        if (-not $vm) {
+            Write-Host "⚠️  VM not found: $VMName" -ForegroundColor Yellow
+            return
+        }
+        
+        # Check if VHD exists
+        if (-not (Test-Path $VHDPath)) {
+            Write-Host "Creating missing VHD for VM: $VMName" -ForegroundColor Yellow
+            $diskSizeBytes = [uint64]($DiskSize -replace 'GB', '') * 1GB
+            New-VHD -Path $VHDPath -SizeBytes $diskSizeBytes -Dynamic | Out-Null
+            Write-Host "✅ Created VHD: $VHDPath" -ForegroundColor Green
+        }
+        
+        # Check if VHD is attached
+        $existingDrives = Get-VMHardDiskDrive -VMName $VMName
+        if (-not $existingDrives) {
+            Write-Host "Attaching VHD to existing VM: $VMName" -ForegroundColor Yellow
+            Add-VMHardDiskDrive -VMName $VMName -Path $VHDPath | Out-Null
+            Write-Host "✅ Attached VHD to VM: $VMName" -ForegroundColor Green
+        }
+        
+        # Set boot order to hard drive first
+        $hardDrive = Get-VMHardDiskDrive -VMName $VMName
+        if ($hardDrive) {
+            Set-VMFirmware -VMName $VMName -FirstBootDevice $hardDrive | Out-Null
+            Write-Host "✅ Set boot order to hard drive first for VM: $VMName" -ForegroundColor Green
+        }
+        
+    } catch {
+        Write-Host "❌ Failed to fix storage for existing VM $VMName : $($_.Exception.Message)" -ForegroundColor Red
     }
 }
 
@@ -178,7 +227,14 @@ try {
     foreach ($vm in $allVMs) {
         $vmPath = Join-Path $BasePath $vm.Name
         $vhdPath = Join-Path $vmPath "$($vm.Name).vhdx"
-        Create-VM -VMName $vm.Name -VMPath $vmPath -VHDPath $vhdPath -IP $vm.IP
+        
+        # Check if VM already exists
+        if (Get-VM -Name $vm.Name -ErrorAction SilentlyContinue) {
+            Write-Host "VM already exists: $($vm.Name), checking storage configuration..." -ForegroundColor Yellow
+            Fix-ExistingVMStorage -VMName $vm.Name -VHDPath $vhdPath
+        } else {
+            Create-VM -VMName $vm.Name -VMPath $vmPath -VHDPath $vhdPath -IP $vm.IP
+        }
     }
     
     # Start all VMs
