@@ -8,6 +8,7 @@ param(
     [int]$CpuCount = 2,
     [string]$DiskSize = "40GB",
     [string]$IsoPath = "C:\Hyper-V\ISOs\ubuntu-22.04.3-server-amd64.iso",
+    [string]$IsoUrl = "https://releases.ubuntu.com/22.04/ubuntu-22.04.3-live-server-amd64.iso",
     [switch]$DryRun = $false
 )
 
@@ -121,12 +122,51 @@ function Create-VMSwitch {
     }
 }
 
+# Function to download Ubuntu ISO
+function Download-UbuntuISO {
+    param([string]$Url, [string]$Path)
+    
+    Write-Host "Downloading Ubuntu ISO..." -ForegroundColor Yellow
+    
+    if ($DryRun) {
+        Write-Host "DRY RUN: Would download Ubuntu ISO from $Url to $Path" -ForegroundColor Cyan
+        return $true
+    }
+    
+    try {
+        $isoDir = Split-Path $Path -Parent
+        if (-not (Test-Path $isoDir)) {
+            New-Item -ItemType Directory -Path $isoDir -Force | Out-Null
+        }
+        
+        if (Test-Path $Path) {
+            Write-Host "✅ Ubuntu ISO already exists: $Path" -ForegroundColor Green
+            return $true
+        }
+        
+        Write-Host "Downloading from: $Url" -ForegroundColor Cyan
+        Invoke-WebRequest -Uri $Url -OutFile $Path -UseBasicParsing
+        Write-Host "✅ Ubuntu ISO downloaded successfully: $Path" -ForegroundColor Green
+        return $true
+    } catch {
+        Write-Host "❌ Failed to download Ubuntu ISO: $($_.Exception.Message)" -ForegroundColor Red
+        return $false
+    }
+}
+
 # Main execution
 try {
     # Create base directory
     if (-not (Test-Path $BasePath)) {
         New-Item -ItemType Directory -Path $BasePath -Force | Out-Null
         Write-Host "✅ Created base directory: $BasePath" -ForegroundColor Green
+    }
+    
+    # Download Ubuntu ISO
+    $isoDownloaded = Download-UbuntuISO -Url $IsoUrl -Path $IsoPath
+    if (-not $isoDownloaded) {
+        Write-Host "❌ Cannot proceed without Ubuntu ISO" -ForegroundColor Red
+        exit 1
     }
     
     # Create VM switch
