@@ -8,7 +8,7 @@ pipeline {
         ANSIBLE_INVENTORY = 'config/ansible/inventories/dev'
         NOMAD_ADDR = 'http://192.168.1.103:4646'
         CONSUL_ADDR = 'http://192.168.1.100:8500'
-        JENKINS_CREDENTIALS_ID = 'nomad-consul-ssh-key'
+        JENKINS_CREDENTIALS_ID = 'nomad-consul-password'
         BACKUP_ENABLED = 'true'
         MONITORING_ENABLED = 'true'
     }

@@ -7,7 +7,8 @@ all:
         consul-server-1:
           ansible_host: 192.168.1.100
           ansible_user: ubuntu
-          ansible_ssh_private_key_file: ~/.ssh/id_rsa
+          ansible_password: ubuntu
+          ansible_ssh_pass: ubuntu
           consul_role: server
           consul_bootstrap_expect: 3
           consul_retry_join:
@@ -17,7 +18,8 @@ all:
         consul-server-2:
           ansible_host: 192.168.1.101
           ansible_user: ubuntu
-          ansible_ssh_private_key_file: ~/.ssh/id_rsa
+          ansible_password: ubuntu
+          ansible_ssh_pass: ubuntu
           consul_role: server
           consul_bootstrap_expect: 3
           consul_retry_join:
@@ -27,7 +29,8 @@ all:
         consul-server-3:
           ansible_host: 192.168.1.102
           ansible_user: ubuntu
-          ansible_ssh_private_key_file: ~/.ssh/id_rsa
+          ansible_password: ubuntu
+          ansible_ssh_pass: ubuntu
           consul_role: server
           consul_bootstrap_expect: 3
           consul_retry_join:
@@ -56,7 +59,8 @@ all:
         nomad-server-1:
           ansible_host: 192.168.1.103
           ansible_user: ubuntu
-          ansible_ssh_private_key_file: ~/.ssh/id_rsa
+          ansible_password: ubuntu
+          ansible_ssh_pass: ubuntu
           nomad_role: server
           nomad_bootstrap_expect: 3
           nomad_retry_join:
@@ -66,7 +70,8 @@ all:
         nomad-server-2:
           ansible_host: 192.168.1.104
           ansible_user: ubuntu
-          ansible_ssh_private_key_file: ~/.ssh/id_rsa
+          ansible_password: ubuntu
+          ansible_ssh_pass: ubuntu
           nomad_role: server
           nomad_bootstrap_expect: 3
           nomad_retry_join:
@@ -76,7 +81,8 @@ all:
         nomad-server-3:
           ansible_host: 192.168.1.105
           ansible_user: ubuntu
-          ansible_ssh_private_key_file: ~/.ssh/id_rsa
+          ansible_password: ubuntu
+          ansible_ssh_pass: ubuntu
           nomad_role: server
           nomad_bootstrap_expect: 3
           nomad_retry_join:
@@ -98,7 +104,8 @@ all:
         nomad-client-1:
           ansible_host: 192.168.1.106
           ansible_user: ubuntu
-          ansible_ssh_private_key_file: ~/.ssh/id_rsa
+          ansible_password: ubuntu
+          ansible_ssh_pass: ubuntu
           nomad_role: client
           nomad_servers:
             - 192.168.1.103
@@ -107,7 +114,8 @@ all:
         nomad-client-2:
           ansible_host: 192.168.1.107
           ansible_user: ubuntu
-          ansible_ssh_private_key_file: ~/.ssh/id_rsa
+          ansible_password: ubuntu
+          ansible_ssh_pass: ubuntu
           nomad_role: client
           nomad_servers:
             - 192.168.1.103
@@ -116,7 +124,8 @@ all:
         nomad-client-3:
           ansible_host: 192.168.1.108
           ansible_user: ubuntu
-          ansible_ssh_private_key_file: ~/.ssh/id_rsa
+          ansible_password: ubuntu
+          ansible_ssh_pass: ubuntu
           nomad_role: client
           nomad_servers:
             - 192.168.1.103
