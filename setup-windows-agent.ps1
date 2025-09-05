@@ -158,3 +158,4 @@ Write-Host "- Ansible: $(ansible --version 2>$null | Select-Object -First 1)" -F
 Write-Host "- Git: $(git --version 2>$null)" -ForegroundColor White
 Write-Host "- Consul: $(consul version 2>$null | Select-Object -First 1)" -ForegroundColor White
 Write-Host "- Nomad: $(nomad version 2>$null | Select-Object -First 1)" -ForegroundColor White
+

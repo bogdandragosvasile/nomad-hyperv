@@ -77,3 +77,4 @@ try {
     Write-Host "❌ Failed to start Jenkins agent: $($_.Exception.Message)" -ForegroundColor Red
     exit 1
 }
+

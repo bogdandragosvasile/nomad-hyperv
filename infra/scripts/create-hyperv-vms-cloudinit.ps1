@@ -1,6 +1,4 @@
 # Create Hyper-V VMs with Cloud-Init Configuration
-# This script creates VMs with proper networking and SSH access
-
 param(
     [string]$VhdBasePath = "C:\Hyper-V\VHDs",
     [string]$VmBasePath = "C:\Hyper-V\VMs",
@@ -11,15 +9,12 @@ param(
 )
 
 Write-Host "=== Creating Hyper-V VMs with Cloud-Init Configuration ===" -ForegroundColor Green
-Write-Host ""
 
 # Check if running as administrator
 if (-NOT ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole] "Administrator")) {
     Write-Host "This script requires Administrator privileges!" -ForegroundColor Red
     exit 1
 }
-
-Write-Host "✅ Running with Administrator privileges" -ForegroundColor Green
 
 # VM configurations
 $vmConfigs = @(
@@ -34,31 +29,11 @@ $vmConfigs = @(
     @{Name="nomad-client-3"; IP="192.168.1.108"; Role="nomad-client"}
 )
 
-# Function to destroy existing VMs
-function Destroy-ExistingVMs {
-    Write-Host "Destroying existing VMs..." -ForegroundColor Yellow
-    
-    foreach ($vmConfig in $vmConfigs) {
-        $vm = Get-VM -Name $vmConfig.Name -ErrorAction SilentlyContinue
-        if ($vm) {
-            Write-Host "Destroying VM: $($vmConfig.Name)" -ForegroundColor Cyan
-            if (-not $DryRun) {
-                if ($vm.State -eq "Running") {
-                    Stop-VM -Name $vmConfig.Name -Force
-                }
-                Remove-VM -Name $vmConfig.Name -Force
-            }
-        }
-    }
-    
-    Write-Host "✅ Existing VMs destroyed" -ForegroundColor Green
-}
-
-# Function to create cloud-init configuration
-function Create-CloudInitConfig {
+# Function to create cloud-init user-data
+function Create-UserData {
     param([string]$VmName, [string]$IpAddress, [string]$Role, [string]$SshKey)
     
-    $cloudInitConfig = @"
+    $userData = @"
 #cloud-config
 hostname: $VmName
 fqdn: $VmName.local
@@ -73,10 +48,8 @@ users:
     lock_passwd: false
     passwd: `$6`$rounds=4096`$salt`$hash
 
-# Enable password authentication for SSH
 ssh_pwauth: true
 
-# Network configuration
 network:
   version: 2
   ethernets:
@@ -90,11 +63,9 @@ network:
           - 8.8.8.8
           - 8.8.4.4
 
-# Package updates
 package_update: true
 package_upgrade: true
 
-# Install required packages
 packages:
   - openssh-server
   - curl
@@ -102,24 +73,51 @@ packages:
   - unzip
   - python3
   - python3-pip
+  - git
+  - htop
+  - vim
+  - net-tools
+  - dnsutils
 
-# Enable SSH service
+write_files:
+  - path: /etc/ssh/sshd_config.d/99-cloud-init.conf
+    content: |
+      PasswordAuthentication yes
+      PubkeyAuthentication yes
+      AuthorizedKeysFile .ssh/authorized_keys
+      PermitRootLogin no
+    permissions: '0644'
+  - path: /etc/hosts
+    content: |
+      127.0.0.1 localhost
+      $IpAddress $VmName $VmName.local
+      192.168.1.100 consul-server-1 consul-server-1.local
+      192.168.1.101 consul-server-2 consul-server-2.local
+      192.168.1.102 consul-server-3 consul-server-3.local
+      192.168.1.103 nomad-server-1 nomad-server-1.local
+      192.168.1.104 nomad-server-2 nomad-server-2.local
+      192.168.1.105 nomad-server-3 nomad-server-3.local
+      192.168.1.106 nomad-client-1 nomad-client-1.local
+      192.168.1.107 nomad-client-2 nomad-client-2.local
+      192.168.1.108 nomad-client-3 nomad-client-3.local
+    permissions: '0644'
+
 runcmd:
   - systemctl enable ssh
-  - systemctl start ssh
+  - systemctl restart ssh
   - ufw allow ssh
   - ufw --force enable
   - echo "VM $VmName ($Role) is ready with IP $IpAddress" > /var/log/vm-ready.log
+  - systemctl restart networking
 
-# Final message
 final_message: "VM $VmName ($Role) is ready with IP $IpAddress"
 "@
     
-    return $cloudInitConfig
+    return $userData
 }
 
-# Function to create VM with cloud-init
-function Create-VMWithCloudInit {
+# Function to create VM
+function Create-VM {
     param([string]$VmName, [string]$IpAddress, [string]$Role, [string]$SshKey)
     
     Write-Host "Creating VM: $VmName with IP: $IpAddress" -ForegroundColor Yellow
@@ -144,33 +142,24 @@ function Create-VMWithCloudInit {
                 Copy-Item $ubuntuVhd $vhdPath
                 Add-VMHardDiskDrive -VM $vm -Path $vhdPath
             } else {
-                Write-Host "❌ Ubuntu VHD not found at: $ubuntuVhd" -ForegroundColor Red
+                Write-Host "Ubuntu VHD not found at: $ubuntuVhd" -ForegroundColor Red
                 return $false
             }
             
             # Configure VM
             Set-VM -VM $vm -ProcessorCount 2
             Set-VMMemory -VM $vm -DynamicMemoryEnabled $false
-            
-            # Disable Secure Boot
             Set-VMFirmware -VM $vm -EnableSecureBoot Off
             
-            # Set boot order
-            $bootOrder = @(
-                (Get-VMFirmware -VM $vm).BootOrder[0]  # EFI SCSI Device
-            )
-            Set-VMFirmware -VM $vm -BootOrder $bootOrder
-            
             # Create cloud-init configuration
-            $cloudInitConfig = Create-CloudInitConfig -VmName $VmName -IpAddress $IpAddress -Role $Role -SshKey $SshKey
-            
-            # Create cloud-init directory structure
             $cloudInitDir = Join-Path $vmPath "cloud-init"
             New-Item -ItemType Directory -Path $cloudInitDir -Force | Out-Null
             
-            # Write cloud-init configuration
-            $cloudInitConfig | Out-File -FilePath (Join-Path $cloudInitDir "user-data") -Encoding UTF8
+            # Create user-data
+            $userData = Create-UserData -VmName $VmName -IpAddress $IpAddress -Role $Role -SshKey $SshKey
+            $userData | Out-File -FilePath (Join-Path $cloudInitDir "user-data") -Encoding UTF8
             
+            # Create meta-data
             $metaData = @"
 instance-id: $VmName
 local-hostname: $VmName
@@ -180,38 +169,29 @@ local-hostname: $VmName
             # Start VM
             Start-VM -VM $vm
             
-            Write-Host "✅ VM $VmName created and started successfully!" -ForegroundColor Green
+            Write-Host "VM $VmName created and started successfully!" -ForegroundColor Green
         } else {
-            Write-Host "🔍 DRY RUN: Would create VM $VmName with IP $IpAddress" -ForegroundColor Yellow
+            Write-Host "DRY RUN: Would create VM $VmName with IP $IpAddress" -ForegroundColor Yellow
         }
         
         return $true
         
     } catch {
-        Write-Host "❌ Error creating VM $VmName : $($_.Exception.Message)" -ForegroundColor Red
+        Write-Host "Error creating VM $VmName : $($_.Exception.Message)" -ForegroundColor Red
         return $false
     }
 }
 
 # Main execution
-Write-Host "Starting VM creation process..." -ForegroundColor Green
-
 if ($DryRun) {
-    Write-Host "🔍 DRY RUN MODE - No changes will be made" -ForegroundColor Yellow
+    Write-Host "DRY RUN MODE - No changes will be made" -ForegroundColor Yellow
 }
 
-# Destroy existing VMs if requested
-if ($DestroyExisting) {
-    Destroy-ExistingVMs
-    Write-Host ""
-}
-
-# Create VMs
 $successCount = 0
 $totalCount = $vmConfigs.Count
 
 foreach ($vmConfig in $vmConfigs) {
-    $success = Create-VMWithCloudInit -VmName $vmConfig.Name -IpAddress $vmConfig.IP -Role $vmConfig.Role -SshKey $SshPublicKey
+    $success = Create-VM -VmName $vmConfig.Name -IpAddress $vmConfig.IP -Role $vmConfig.Role -SshKey $SshPublicKey
     if ($success) {
         $successCount++
     }
@@ -222,16 +202,14 @@ Write-Host "VM Creation Summary:" -ForegroundColor Green
 Write-Host "Successfully created: $successCount/$totalCount VMs" -ForegroundColor White
 
 if ($successCount -eq $totalCount) {
-    Write-Host "✅ All VMs created successfully!" -ForegroundColor Green
+    Write-Host "All VMs created successfully!" -ForegroundColor Green
     Write-Host ""
-    Write-Host "Next steps:" -ForegroundColor Yellow
-    Write-Host "1. Wait for VMs to boot and configure networking (2-3 minutes)" -ForegroundColor White
-    Write-Host "2. Test SSH connectivity to VMs" -ForegroundColor White
-    Write-Host "3. Run Ansible playbooks to configure Consul and Nomad" -ForegroundColor White
+    Write-Host "VM IP Addresses:" -ForegroundColor Cyan
+    foreach ($vmConfig in $vmConfigs) {
+        Write-Host "  $($vmConfig.Name): $($vmConfig.IP)" -ForegroundColor White
+    }
 } else {
-    Write-Host "❌ Some VMs failed to create!" -ForegroundColor Red
+    Write-Host "Some VMs failed to create!" -ForegroundColor Red
 }
 
-Write-Host ""
 Write-Host "=== VM Creation Complete ===" -ForegroundColor Green
-

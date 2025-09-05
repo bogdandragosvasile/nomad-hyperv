@@ -92,3 +92,4 @@ Write-Host ""
 Write-Host "WinRM should now be accessible on:" -ForegroundColor Cyan
 Write-Host "- HTTP: http://localhost:5985" -ForegroundColor White
 Write-Host "- HTTPS: https://localhost:5986" -ForegroundColor White
+

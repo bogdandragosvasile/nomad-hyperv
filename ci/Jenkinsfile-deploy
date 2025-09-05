@@ -1,0 +1,394 @@
+pipeline {
+    agent {
+        label 'windows-hyperv-agent' // Use Windows agent for Hyper-V operations
+    }
+    
+    environment {
+        VHD_BASE_PATH = 'C:\\Hyper-V\\VHDs'
+        VM_BASE_PATH = 'C:\\Hyper-V\\VMs'
+        PREPARED_IMAGE_PATH = 'C:\\Hyper-V\\PreparedImages'
+        SWITCH_NAME = 'NAT-Switch'
+    }
+    
+    parameters {
+        choice(
+            name: 'DEPLOYMENT_TYPE',
+            choices: ['full', 'infrastructure', 'configuration', 'workloads', 'destroy'],
+            description: 'Type of deployment to perform'
+        )
+        string(
+            name: 'PREPARED_IMAGE_NAME',
+            defaultValue: 'ubuntu-nomad-consul-prepared',
+            description: 'Name of the prepared image to use'
+        )
+        booleanParam(
+            name: 'DESTROY_EXISTING',
+            defaultValue: false,
+            description: 'Destroy existing VMs before creating new ones'
+        )
+        booleanParam(
+            name: 'DRY_RUN',
+            defaultValue: false,
+            description: 'Perform a dry run without making changes'
+        )
+        string(
+            name: 'CONSUL_SERVER_IPS',
+            defaultValue: '192.168.1.100,192.168.1.101,192.168.1.102',
+            description: 'IP addresses for Consul servers'
+        )
+        string(
+            name: 'NOMAD_SERVER_IPS',
+            defaultValue: '192.168.1.103,192.168.1.104,192.168.1.105',
+            description: 'IP addresses for Nomad servers'
+        )
+        string(
+            name: 'NOMAD_CLIENT_IPS',
+            defaultValue: '192.168.1.106,192.168.1.107,192.168.1.108',
+            description: 'IP addresses for Nomad clients'
+        )
+    }
+    
+    stages {
+        stage('Validate') {
+            steps {
+                script {
+                    validateDeploymentPrerequisites()
+                }
+            }
+        }
+        
+        stage('Destroy Infrastructure') {
+            when {
+                expression { params.DEPLOYMENT_TYPE == 'destroy' }
+            }
+            steps {
+                script {
+                    destroyInfrastructure()
+                }
+            }
+        }
+        
+        stage('Setup Environment') {
+            steps {
+                script {
+                    setupDeploymentEnvironment()
+                }
+            }
+        }
+        
+        stage('Deploy Infrastructure') {
+            when {
+                anyOf {
+                    expression { params.DEPLOYMENT_TYPE == 'full' }
+                    expression { params.DEPLOYMENT_TYPE == 'infrastructure' }
+                }
+            }
+            steps {
+                script {
+                    deployInfrastructure()
+                }
+            }
+        }
+        
+        stage('Wait for VMs') {
+            when {
+                anyOf {
+                    expression { params.DEPLOYMENT_TYPE == 'full' }
+                    expression { params.DEPLOYMENT_TYPE == 'infrastructure' }
+                }
+            }
+            steps {
+                script {
+                    waitForVMs()
+                }
+            }
+        }
+        
+        stage('Configure Cluster') {
+            when {
+                anyOf {
+                    expression { params.DEPLOYMENT_TYPE == 'full' }
+                    expression { params.DEPLOYMENT_TYPE == 'configuration' }
+                }
+            }
+            steps {
+                script {
+                    configureCluster()
+                }
+            }
+        }
+        
+        stage('Deploy Workloads') {
+            when {
+                anyOf {
+                    expression { params.DEPLOYMENT_TYPE == 'full' }
+                    expression { params.DEPLOYMENT_TYPE == 'workloads' }
+                }
+            }
+            steps {
+                script {
+                    deployWorkloads()
+                }
+            }
+        }
+    }
+    
+    post {
+        always {
+            script {
+                cleanupDeploymentEnvironment()
+            }
+        }
+        success {
+            echo "✅ Deployment completed successfully!"
+        }
+        failure {
+            echo "❌ Deployment failed!"
+        }
+    }
+}
+
+// Pipeline Functions
+
+def validateDeploymentPrerequisites() {
+    echo "Validating deployment prerequisites..."
+    
+    powershell """
+        # Check if running as administrator
+        if (-NOT ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole] "Administrator")) {
+            Write-Host "This pipeline requires Administrator privileges!" -ForegroundColor Red
+            exit 1
+        }
+        
+        # Check if prepared image exists
+        \$preparedImagePath = "${env.PREPARED_IMAGE_PATH}\\${params.PREPARED_IMAGE_NAME}.vhd"
+        if (-not (Test-Path \$preparedImagePath)) {
+            Write-Host "Prepared image not found: \$preparedImagePath" -ForegroundColor Red
+            Write-Host "Please run the image preparation pipeline first!" -ForegroundColor Red
+            exit 1
+        }
+        
+        # Check if Hyper-V switch exists
+        \$switch = Get-VMSwitch -Name "${env.SWITCH_NAME}" -ErrorAction SilentlyContinue
+        if (-not \$switch) {
+            Write-Host "Hyper-V switch '${env.SWITCH_NAME}' not found!" -ForegroundColor Red
+            exit 1
+        }
+        
+        Write-Host "✅ Prerequisites validation passed" -ForegroundColor Green
+    """
+    
+    echo "✅ Prerequisites validation completed"
+}
+
+def setupDeploymentEnvironment() {
+    echo "Setting up deployment environment..."
+    
+    powershell """
+        # Create necessary directories
+        if (-not (Test-Path "${env.VHD_BASE_PATH}")) {
+            New-Item -ItemType Directory -Path "${env.VHD_BASE_PATH}" -Force | Out-Null
+        }
+        if (-not (Test-Path "${env.VM_BASE_PATH}")) {
+            New-Item -ItemType Directory -Path "${env.VM_BASE_PATH}" -Force | Out-Null
+        }
+        if (-not (Test-Path "${env.PREPARED_IMAGE_PATH}")) {
+            New-Item -ItemType Directory -Path "${env.PREPARED_IMAGE_PATH}" -Force | Out-Null
+        }
+        
+        Write-Host "✅ Environment setup completed" -ForegroundColor Green
+    """
+    
+    echo "✅ Deployment environment setup completed"
+}
+
+def destroyInfrastructure() {
+    echo "Destroying existing infrastructure..."
+    
+    powershell """
+        # VM names to destroy
+        \$vmNames = @(
+            "consul-server-1", "consul-server-2", "consul-server-3",
+            "nomad-server-1", "nomad-server-2", "nomad-server-3",
+            "nomad-client-1", "nomad-client-2", "nomad-client-3"
+        )
+        
+        foreach (\$vmName in \$vmNames) {
+            \$vm = Get-VM -Name \$vmName -ErrorAction SilentlyContinue
+            if (\$vm) {
+                Write-Host "Destroying VM: \$vmName" -ForegroundColor Yellow
+                if (\$vm.State -eq "Running") {
+                    Stop-VM -Name \$vmName -Force -ErrorAction SilentlyContinue
+                }
+                Remove-VM -Name \$vmName -Force -ErrorAction SilentlyContinue
+            }
+        }
+        
+        Write-Host "✅ Infrastructure destruction completed" -ForegroundColor Green
+    """
+    
+    echo "✅ Infrastructure destruction completed"
+}
+
+def deployInfrastructure() {
+    echo "Deploying infrastructure using prepared images..."
+    
+    powershell """
+        # VM configurations
+        \$vmConfigs = @(
+            @{Name="consul-server-1"; IP="192.168.1.100"; Role="consul-server"},
+            @{Name="consul-server-2"; IP="192.168.1.101"; Role="consul-server"},
+            @{Name="consul-server-3"; IP="192.168.1.102"; Role="consul-server"},
+            @{Name="nomad-server-1"; IP="192.168.1.103"; Role="nomad-server"},
+            @{Name="nomad-server-2"; IP="192.168.1.104"; Role="nomad-server"},
+            @{Name="nomad-server-3"; IP="192.168.1.105"; Role="nomad-server"},
+            @{Name="nomad-client-1"; IP="192.168.1.106"; Role="nomad-client"},
+            @{Name="nomad-client-2"; IP="192.168.1.107"; Role="nomad-client"},
+            @{Name="nomad-client-3"; IP="192.168.1.108"; Role="nomad-client"}
+        )
+        
+        \$preparedImagePath = "${env.PREPARED_IMAGE_PATH}\\${params.PREPARED_IMAGE_NAME}.vhd"
+        \$successCount = 0
+        
+        foreach (\$vmConfig in \$vmConfigs) {
+            try {
+                Write-Host "Creating VM: \$(\$vmConfig.Name) with IP: \$(\$vmConfig.IP)" -ForegroundColor Yellow
+                
+                # Create VM directory
+                \$vmPath = Join-Path "${env.VM_BASE_PATH}" \$vmConfig.Name
+                if (-not (Test-Path \$vmPath)) {
+                    New-Item -ItemType Directory -Path \$vmPath -Force | Out-Null
+                }
+                
+                # Create VHD path
+                \$vhdPath = Join-Path \$vmPath "\$(\$vmConfig.Name).vhd"
+                
+                # Copy prepared image
+                Copy-Item \$preparedImagePath \$vhdPath
+                
+                # Create VM
+                \$vm = New-VM -Name \$vmConfig.Name -Path \$vmPath -MemoryStartupBytes 2GB -Generation 2 -SwitchName "${env.SWITCH_NAME}"
+                
+                # Attach VHD
+                Add-VMHardDiskDrive -VM \$vm -Path \$vhdPath
+                
+                # Configure VM
+                Set-VM -VM \$vm -ProcessorCount 2
+                Set-VMMemory -VM \$vm -DynamicMemoryEnabled \$false
+                Set-VMFirmware -VM \$vm -EnableSecureBoot Off
+                
+                # Start VM
+                Start-VM -VM \$vm
+                
+                Write-Host "✅ VM \$(\$vmConfig.Name) created and started successfully!" -ForegroundColor Green
+                \$successCount++
+                
+            } catch {
+                Write-Host "❌ Error creating VM \$(\$vmConfig.Name): \$(\$_.Exception.Message)" -ForegroundColor Red
+            }
+        }
+        
+        Write-Host "VM Creation Summary: \$successCount/\$(\$vmConfigs.Count) VMs created successfully" -ForegroundColor White
+    """
+    
+    echo "✅ Infrastructure deployment completed"
+}
+
+def waitForVMs() {
+    echo "Waiting for VMs to boot and configure networking..."
+    
+    powershell """
+        # Wait for VMs to boot
+        Write-Host "Waiting for VMs to boot..." -ForegroundColor Yellow
+        Start-Sleep -Seconds 120
+        
+        # Check VM status
+        \$vmNames = @(
+            "consul-server-1", "consul-server-2", "consul-server-3",
+            "nomad-server-1", "nomad-server-2", "nomad-server-3",
+            "nomad-client-1", "nomad-client-2", "nomad-client-3"
+        )
+        
+        foreach (\$vmName in \$vmNames) {
+            \$vm = Get-VM -Name \$vmName -ErrorAction SilentlyContinue
+            if (\$vm) {
+                Write-Host "VM \$vmName: \$(\$vm.State)" -ForegroundColor Cyan
+            }
+        }
+        
+        # Wait for networking to be configured
+        Write-Host "Waiting for networking configuration..." -ForegroundColor Yellow
+        Start-Sleep -Seconds 60
+        
+        # Check IP addresses
+        Write-Host "Checking VM IP addresses..." -ForegroundColor Yellow
+        foreach (\$vmName in \$vmNames) {
+            \$vm = Get-VM -Name \$vmName -ErrorAction SilentlyContinue
+            if (\$vm) {
+                \$ips = \$vm.NetworkAdapters[0].IPAddresses -join ', '
+                Write-Host "VM \$vmName: \$ips" -ForegroundColor Cyan
+            }
+        }
+        
+        Write-Host "✅ VM boot and networking check completed" -ForegroundColor Green
+    """
+    
+    echo "✅ VM wait completed"
+}
+
+def configureCluster() {
+    echo "Configuring Consul and Nomad cluster..."
+    
+    // Set environment variables for Ansible
+    env.CONSUL_SERVERS = params.CONSUL_SERVER_IPS
+    env.NOMAD_SERVERS = params.NOMAD_SERVER_IPS
+    env.NOMAD_CLIENTS = params.NOMAD_CLIENT_IPS
+    
+    dir('config/ansible') {
+        // Run Ansible playbooks to configure the cluster
+        if (params.DRY_RUN) {
+            echo "DRY RUN: Would run Ansible playbooks"
+        } else {
+            sh """
+                # Test SSH connectivity first
+                ansible all -i inventories/dev/hosts.yaml -m ping
+                
+                # Configure Consul
+                ansible-playbook -i inventories/dev/hosts.yaml playbooks/consul.yml
+                
+                # Configure Nomad
+                ansible-playbook -i inventories/dev/hosts.yaml playbooks/nomad.yml
+            """
+        }
+    }
+    
+    echo "✅ Cluster configuration completed"
+}
+
+def deployWorkloads() {
+    echo "Deploying workloads..."
+    
+    dir('config/ansible') {
+        if (params.DRY_RUN) {
+            echo "DRY RUN: Would deploy workloads"
+        } else {
+            sh """
+                # Deploy sample workloads
+                ansible-playbook -i inventories/dev/hosts.yaml playbooks/workloads.yml
+            """
+        }
+    }
+    
+    echo "✅ Workload deployment completed"
+}
+
+def cleanupDeploymentEnvironment() {
+    echo "Cleaning up deployment environment..."
+    
+    powershell """
+        # Clean up any temporary files
+        Write-Host "Deployment environment cleanup completed" -ForegroundColor Green
+    """
+    
+    echo "✅ Deployment environment cleanup completed"
+}

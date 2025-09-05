@@ -16,7 +16,7 @@ pipeline {
     parameters {
         choice(
             name: 'DEPLOYMENT_TYPE',
-            choices: ['full', 'infrastructure', 'configuration', 'workloads'],
+            choices: ['full', 'infrastructure', 'configuration', 'workloads', 'destroy'],
             description: 'Type of deployment to perform'
         )
         booleanParam(
@@ -28,6 +28,11 @@ pipeline {
             name: 'HYBRID_MODE',
             defaultValue: true,
             description: 'Use Linux agent for validation, Windows for deployment'
+        )
+        booleanParam(
+            name: 'DESTROY_EXISTING',
+            defaultValue: false,
+            description: 'Destroy existing VMs before creating new ones'
         )
         string(
             name: 'TERRAFORM_VERSION',
@@ -46,6 +51,17 @@ pipeline {
             steps {
                 script {
                     validatePrerequisites()
+                }
+            }
+        }
+        
+        stage('Destroy Infrastructure') {
+            when {
+                expression { params.DEPLOYMENT_TYPE == 'destroy' }
+            }
+            steps {
+                script {
+                    destroyInfrastructure()
                 }
             }
         }
@@ -309,20 +325,38 @@ def provisionInfrastructure() {
         if (params.DRY_RUN) {
             echo "DRY RUN: Would run PowerShell script for Hyper-V VMs"
         } else {
-            powershell '.\\create-hyperv-vms.ps1'
+            def destroyFlag = params.DESTROY_EXISTING ? '-DestroyExisting' : ''
+            def dryRunFlag = params.DRY_RUN ? '-DryRun' : ''
+            powershell ".\\create-hyperv-vms-cloudinit.ps1 $destroyFlag $dryRunFlag"
         }
         
         // Wait for VMs to be ready
-        echo "Waiting for VMs to initialize..."
-        sleep(60)
+        echo "Waiting for VMs to initialize and configure networking..."
+        sleep(300) // 5 minutes for cloud-init to configure networking and SSH
         
         // Set environment variables for VM IPs
-        env.CONSUL_SERVERS = "192.168.1.10,192.168.1.11,192.168.1.12"
-        env.NOMAD_SERVERS = "192.168.1.20,192.168.1.21,192.168.1.22"
-        env.NOMAD_CLIENTS = "192.168.1.30,192.168.1.31,192.168.1.32"
+        env.CONSUL_SERVERS = "192.168.1.100,192.168.1.101,192.168.1.102"
+        env.NOMAD_SERVERS = "192.168.1.103,192.168.1.104,192.168.1.105"
+        env.NOMAD_CLIENTS = "192.168.1.106,192.168.1.107,192.168.1.108"
     }
     
     echo "Infrastructure provisioning completed"
+}
+
+def destroyInfrastructure() {
+    echo "Destroying infrastructure with PowerShell..."
+    
+    dir('infra/scripts') {
+        // Run PowerShell script to destroy Hyper-V VMs
+        if (params.DRY_RUN) {
+            echo "DRY RUN: Would run PowerShell script to destroy Hyper-V VMs"
+        } else {
+            def dryRunFlag = params.DRY_RUN ? '-DryRun' : ''
+            powershell ".\\destroy-hyperv-vms.ps1 $dryRunFlag"
+        }
+    }
+    
+    echo "Infrastructure destruction completed"
 }
 
 def provisionInfrastructureHybrid() {

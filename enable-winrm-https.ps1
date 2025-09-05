@@ -55,3 +55,4 @@ Write-Host "- HTTP: http://localhost:5985" -ForegroundColor White
 Write-Host "- HTTPS: https://localhost:5986" -ForegroundColor White
 Write-Host ""
 Write-Host "The Hyper-V Terraform provider should now be able to connect!" -ForegroundColor Green
+
