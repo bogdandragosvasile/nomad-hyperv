@@ -79,9 +79,6 @@ pipeline {
         }
     }
     
-    // Archive the prepared image as an artifact for Windows agent access
-    archiveArtifacts artifacts: "${params.IMAGE_NAME}.vhd", fingerprint: true
-    
     post {
         always {
             script {
@@ -90,6 +87,9 @@ pipeline {
         }
         success {
             echo "✅ VM image preparation completed successfully!"
+            
+            // Archive the prepared image as an artifact for Windows agent access
+            archiveArtifacts artifacts: "${params.IMAGE_NAME}.vhd", fingerprint: true
         }
         failure {
             echo "❌ VM image preparation failed!"
