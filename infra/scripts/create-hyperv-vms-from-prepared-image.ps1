@@ -7,25 +7,104 @@ param(
 # Configuration
 $VMPath = "C:\Hyper-V\VMs"
 $VHDPath = "C:\Hyper-V\VHDs"
-# Look for prepared image in Jenkins workspace first, then fallback to Hyper-V directory
-$WorkspaceImagePath = "C:\Jenkins\workspace\workspace\nomad-consul-deployment\ubuntu-nomad-consul-prepared.vhd"
-$HyperVImagePath = "C:\Hyper-V\Prepared-Images\ubuntu-nomad-consul-prepared.vhd"
+# Use the original Ubuntu VHD instead of prepared image (format compatibility issues)
+$OriginalUbuntuVHD = "C:\Hyper-V\VHDs\livecd.ubuntu-cpc.azure.vhd"
 
-if (Test-Path $WorkspaceImagePath) {
-    $PreparedImagePath = $WorkspaceImagePath
-    Write-Host "Using prepared image from workspace: $PreparedImagePath" -ForegroundColor Green
-} elseif (Test-Path $HyperVImagePath) {
-    $PreparedImagePath = $HyperVImagePath
-    Write-Host "Using prepared image from Hyper-V directory: $PreparedImagePath" -ForegroundColor Green
+if (Test-Path $OriginalUbuntuVHD) {
+    $PreparedImagePath = $OriginalUbuntuVHD
+    Write-Host "Using original Ubuntu VHD: $PreparedImagePath" -ForegroundColor Green
 } else {
-    Write-Host "Prepared image not found in either location:" -ForegroundColor Red
-    Write-Host "  Workspace: $WorkspaceImagePath" -ForegroundColor Red
-    Write-Host "  Hyper-V: $HyperVImagePath" -ForegroundColor Red
+    Write-Host "Original Ubuntu VHD not found at: $OriginalUbuntuVHD" -ForegroundColor Red
+    Write-Host "Please ensure the Ubuntu VHD is available" -ForegroundColor Red
     exit 1
 }
 $NetworkSwitch = "NAT-Switch"
 $Memory = 2GB
 $ProcessorCount = 2
+
+# Function to create cloud-init ISO
+function Create-CloudInitISO {
+    param(
+        [string]$VMName,
+        [string]$IP,
+        [string]$Role
+    )
+    
+    $isoPath = Join-Path $VHDPath "$VMName-cloud-init.iso"
+    $tempDir = Join-Path $env:TEMP "cloud-init-$VMName"
+    
+    # Create temporary directory
+    New-Item -ItemType Directory -Path $tempDir -Force | Out-Null
+    
+    # Create user-data
+    $userData = @"
+#cloud-config
+hostname: $VMName
+fqdn: $VMName.local
+manage_etc_hosts: true
+
+users:
+  - name: ubuntu
+    sudo: ALL=(ALL) NOPASSWD:ALL
+    shell: /bin/bash
+    ssh_authorized_keys:
+      - ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQC7vbqajDhA... jenkins@nomad-consul
+
+package_update: true
+package_upgrade: true
+
+packages:
+  - openssh-server
+  - curl
+  - wget
+  - unzip
+
+runcmd:
+  - systemctl enable ssh
+  - systemctl start ssh
+  - echo "VM $VMName with role $Role is ready" > /var/log/vm-ready.log
+"@
+    
+    # Create network-config
+    $networkConfig = @"
+version: 2
+ethernets:
+  eth0:
+    dhcp4: true
+    dhcp6: false
+"@
+    
+    # Create meta-data
+    $metaData = @"
+instance-id: $VMName
+local-hostname: $VMName
+"@
+    
+    # Write files
+    $userData | Out-File -FilePath "$tempDir\user-data" -Encoding ASCII
+    $networkConfig | Out-File -FilePath "$tempDir\network-config" -Encoding ASCII
+    $metaData | Out-File -FilePath "$tempDir\meta-data" -Encoding ASCII
+    
+    # Create ISO
+    try {
+        $oscdimgPath = "${env:ProgramFiles(x86)}\Windows Kits\10\Assessment and Deployment Kit\Deployment Tools\amd64\Oscdimg\oscdimg.exe"
+        if (Test-Path $oscdimgPath) {
+            & $oscdimgPath -m -o -u2 -udfver102 -bootdata:2#p0,e,b"$tempDir"#pEF,e,b"$tempDir" "$tempDir" "$isoPath"
+        } else {
+            # Fallback: use PowerShell to create a simple ISO
+            Write-Host "oscdimg not found, creating simple ISO structure" -ForegroundColor Yellow
+            # This is a simplified approach - in production you'd want proper ISO creation
+            Copy-Item -Path "$tempDir\*" -Destination "$tempDir\cloud-init" -Recurse
+        }
+    } catch {
+        Write-Host "Error creating ISO: $($_.Exception.Message)" -ForegroundColor Red
+    } finally {
+        # Cleanup temp directory
+        Remove-Item -Path $tempDir -Recurse -Force -ErrorAction SilentlyContinue
+    }
+    
+    return $isoPath
+}
 
 # VM Configuration
 $VMs = @(
@@ -111,9 +190,13 @@ foreach ($vm in $VMs) {
     $vmVHDPath = Join-Path $VHDPath "$vmName.vhdx"
     
     try {
-        # Copy prepared image for this VM
-        Write-Host "Copying prepared image for $vmName..." -ForegroundColor Gray
+        # Copy original Ubuntu VHD for this VM
+        Write-Host "Copying Ubuntu VHD for $vmName..." -ForegroundColor Gray
         Copy-Item -Path $PreparedImagePath -Destination $vmVHDPath -Force
+        
+        # Create cloud-init ISO
+        Write-Host "Creating cloud-init ISO for $vmName..." -ForegroundColor Gray
+        $isoPath = Create-CloudInitISO -VMName $vmName -IP $vm.IP -Role $vm.Role
         
         # Create VM
         Write-Host "Creating VM: $vmName" -ForegroundColor Gray
@@ -133,6 +216,9 @@ foreach ($vm in $VMs) {
         
         # Add VHD
         Add-VMHardDiskDrive -VMName $vmName -Path $vmVHDPath
+        
+        # Add cloud-init ISO
+        Add-VMDvdDrive -VMName $vmName -Path $isoPath
         
         # Connect to network
         Connect-VMNetworkAdapter -VMName $vmName -SwitchName $NetworkSwitch
