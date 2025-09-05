@@ -217,8 +217,8 @@ def mountAndPrepareVHD() {
         echo "Installing 7zip..."
         sudo apt-get update && sudo apt-get install -y p7zip-full
         echo "Extracting filesystem with offset \$OFFSET_BYTES..."
-        # Create a temporary file with the partition content
-        dd if=working-image.raw bs=1 skip=\$OFFSET_BYTES of=partition.img
+        # Create a temporary file with the partition content (optimized with larger block size)
+        dd if=working-image.raw bs=1M skip=\$((OFFSET_BYTES / 1048576)) of=partition.img
         # Extract the filesystem
         7z x partition.img -oextracted -y
         # Copy extracted content to mount-point
