@@ -103,8 +103,8 @@ def setupImagePrepEnvironment() {
         mkdir -p ~/hyperv/prepared-images
         mkdir -p ${env.WORKSPACE_PATH}
         
-        # Check if qemu-img is available
-        if command -v qemu-img &> /dev/null; then
+        # Check if qemu-img is available and working
+        if command -v qemu-img &> /dev/null && qemu-img --version &> /dev/null; then
             echo "✅ qemu-img is already available"
             qemu-img --version
         else
