@@ -210,17 +210,12 @@ def mountAndPrepareVHD() {
         OFFSET_BYTES=\$((PARTITION_OFFSET * 512))
         echo "Partition offset: \$PARTITION_OFFSET sectors (\$OFFSET_BYTES bytes)"
         
-        # Mount the partition using loop device (container-compatible)
-        echo "Mounting partition using loop device..."
+        # Mount the partition using direct mount with offset (container-compatible)
+        echo "Mounting partition using direct mount with offset..."
         sudo mkdir -p mount-point
-        # Create loop device and mount with offset
-        echo "Creating loop device..."
-        sudo mknod /dev/loop0 b 7 0
-        LOOP_DEV=/dev/loop0
-        echo "Setting up loop device with offset \$OFFSET_BYTES..."
-        sudo losetup -o \$OFFSET_BYTES \$LOOP_DEV working-image.raw
-        echo "Mounting loop device..."
-        sudo mount \$LOOP_DEV mount-point
+        # Use mount with offset directly (no loop device needed)
+        echo "Mounting with offset \$OFFSET_BYTES..."
+        sudo mount -o loop,offset=\$OFFSET_BYTES working-image.raw mount-point
         
         # Verify mount
         ls -la mount-point/
@@ -371,15 +366,6 @@ def unmountAndExport() {
         # Unmount the partition
         echo "Unmounting partition..."
         sudo umount mount-point
-        # Find and detach the loop device
-        LOOP_DEV=\$(sudo losetup -j working-image.raw | cut -d: -f1)
-        if [ -n "\$LOOP_DEV" ]; then
-            sudo losetup -d \$LOOP_DEV
-        fi
-        # Clean up loop device if we created it
-        if [ -e /dev/loop0 ]; then
-            sudo rm -f /dev/loop0
-        fi
         
         # Convert back to VHD format
         echo "Converting back to VHD format..."
