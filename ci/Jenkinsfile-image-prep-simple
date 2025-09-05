@@ -214,13 +214,12 @@ def mountAndPrepareVHD() {
         echo "Mounting partition using loop device..."
         sudo mkdir -p mount-point
         # Create loop device and mount with offset
-        LOOP_DEV=\$(sudo losetup -f)
-        if [ -z "\$LOOP_DEV" ]; then
-            echo "No loop devices available, creating one..."
-            sudo mknod /dev/loop0 b 7 0
-            LOOP_DEV=/dev/loop0
-        fi
+        echo "Creating loop device..."
+        sudo mknod /dev/loop0 b 7 0
+        LOOP_DEV=/dev/loop0
+        echo "Setting up loop device with offset \$OFFSET_BYTES..."
         sudo losetup -o \$OFFSET_BYTES \$LOOP_DEV working-image.raw
+        echo "Mounting loop device..."
         sudo mount \$LOOP_DEV mount-point
         
         # Verify mount
