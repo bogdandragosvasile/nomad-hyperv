@@ -372,6 +372,9 @@ def unmountAndExport() {
         # Clean up extracted files
         echo "Cleaning up extracted files..."
         sudo rm -rf partition.img
+        # Clean up mount-point with proper permissions
+        sudo chmod -R 755 mount-point
+        sudo rm -rf mount-point
         
         # Convert back to VHD format
         echo "Converting back to VHD format..."
