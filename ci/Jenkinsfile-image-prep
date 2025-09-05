@@ -334,67 +334,69 @@ def cleanupWorkspace() {
 
 def createUserData() {
     def sshKey = params.SSH_PUBLIC_KEY
-    return """#cloud-config
-hostname: ubuntu-nomad-consul
-fqdn: ubuntu-nomad-consul.local
-manage_etc_hosts: true
-
-users:
-  - name: ubuntu
-    sudo: ALL=(ALL) NOPASSWD:ALL
-    shell: /bin/bash
-    ssh_authorized_keys:
-      - """ + sshKey + """
-    lock_passwd: false
-    passwd: \\$6\\$rounds=4096\\$salt\\$hash
-    groups: [adm, audio, cdrom, dialout, dip, floppy, lxd, netdev, plugdev, sudo, video]
-
-ssh_pwauth: true
-
-package_update: true
-package_upgrade: true
-
-packages:
-  - openssh-server
-  - curl
-  - wget
-  - unzip
-  - python3
-  - python3-pip
-  - python3-venv
-  - git
-  - htop
-  - vim
-  - net-tools
-  - dnsutils
-  - ca-certificates
-  - gnupg
-  - lsb-release
-  - software-properties-common
-  - apt-transport-https
-
-write_files:
-  - path: /etc/ssh/sshd_config.d/99-cloud-init.conf
-    content: |
-      PasswordAuthentication yes
-      PubkeyAuthentication yes
-      AuthorizedKeysFile .ssh/authorized_keys
-      PermitRootLogin no
-      MaxAuthTries 6
-      ClientAliveInterval 60
-      ClientAliveCountMax 3
-    permissions: '0644'
-
-runcmd:
-  - systemctl enable ssh
-  - systemctl restart ssh
-  - ufw allow ssh
-  - ufw --force enable
-  - echo "VM is ready with cloud-init configuration" > /var/log/vm-ready.log
-  - systemctl restart networking
-
-final_message: "VM is ready with cloud-init configuration"
-"""
+    def userData = [
+        "#cloud-config",
+        "hostname: ubuntu-nomad-consul",
+        "fqdn: ubuntu-nomad-consul.local",
+        "manage_etc_hosts: true",
+        "",
+        "users:",
+        "  - name: ubuntu",
+        "    sudo: ALL=(ALL) NOPASSWD:ALL",
+        "    shell: /bin/bash",
+        "    ssh_authorized_keys:",
+        "      - " + sshKey,
+        "    lock_passwd: false",
+        "    passwd: \\$6\\$rounds=4096\\$salt\\$hash",
+        "    groups: [adm, audio, cdrom, dialout, dip, floppy, lxd, netdev, plugdev, sudo, video]",
+        "",
+        "ssh_pwauth: true",
+        "",
+        "package_update: true",
+        "package_upgrade: true",
+        "",
+        "packages:",
+        "  - openssh-server",
+        "  - curl",
+        "  - wget",
+        "  - unzip",
+        "  - python3",
+        "  - python3-pip",
+        "  - python3-venv",
+        "  - git",
+        "  - htop",
+        "  - vim",
+        "  - net-tools",
+        "  - dnsutils",
+        "  - ca-certificates",
+        "  - gnupg",
+        "  - lsb-release",
+        "  - software-properties-common",
+        "  - apt-transport-https",
+        "",
+        "write_files:",
+        "  - path: /etc/ssh/sshd_config.d/99-cloud-init.conf",
+        "    content: |",
+        "      PasswordAuthentication yes",
+        "      PubkeyAuthentication yes",
+        "      AuthorizedKeysFile .ssh/authorized_keys",
+        "      PermitRootLogin no",
+        "      MaxAuthTries 6",
+        "      ClientAliveInterval 60",
+        "      ClientAliveCountMax 3",
+        "    permissions: '0644'",
+        "",
+        "runcmd:",
+        "  - systemctl enable ssh",
+        "  - systemctl restart ssh",
+        "  - ufw allow ssh",
+        "  - ufw --force enable",
+        "  - echo \"VM is ready with cloud-init configuration\" > /var/log/vm-ready.log",
+        "  - systemctl restart networking",
+        "",
+        "final_message: \"VM is ready with cloud-init configuration\""
+    ]
+    return userData.join('\n')
 }
 
 def createNetworkConfig() {
