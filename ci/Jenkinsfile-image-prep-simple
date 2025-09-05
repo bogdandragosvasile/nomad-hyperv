@@ -190,6 +190,9 @@ def injectCloudInitConfig() {
     script {
         // Get SSH public key from Jenkins credentials
         withCredentials([string(credentialsId: 'ssh-public-key', variable: 'SSH_PUBLIC_KEY')]) {
+            // Write SSH key to a file to avoid Groovy interpretation issues
+            writeFile file: 'ssh-key.txt', text: env.SSH_PUBLIC_KEY
+            
             sh """
                 cd ${env.WORKSPACE_PATH}
                 
@@ -198,9 +201,12 @@ def injectCloudInitConfig() {
                 sudo mkdir -p mount-point/var/lib/cloud/seed/nocloud-net
                 sudo mkdir -p mount-point/var/lib/cloud/seed/nocloud
                 
+                # Read SSH key from file
+                SSH_KEY=\$(cat ssh-key.txt)
+                
                 # Write user-data
                 echo "Writing user-data..."
-                cat > user-data << 'EOF'
+                cat > user-data << EOF
 #cloud-config
 hostname: ubuntu-nomad-consul
 fqdn: ubuntu-nomad-consul.local
@@ -211,7 +217,7 @@ users:
     sudo: ALL=(ALL) NOPASSWD:ALL
     shell: /bin/bash
     ssh_authorized_keys:
-      - ${SSH_PUBLIC_KEY}
+      - \$SSH_KEY
     lock_passwd: false
     passwd: \\$6\\$rounds=4096\\$salt\\$hash
     groups: [adm, audio, cdrom, dialout, dip, floppy, lxd, netdev, plugdev, sudo, video]
