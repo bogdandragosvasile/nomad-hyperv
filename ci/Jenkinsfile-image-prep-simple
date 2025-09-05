@@ -4,8 +4,8 @@ pipeline {
     }
     
     environment {
-        VHD_BASE_PATH = '/opt/hyperv/vhds'
-        PREPARED_IMAGE_PATH = '/opt/hyperv/prepared-images'
+        VHD_BASE_PATH = '~/hyperv/vhds'
+        PREPARED_IMAGE_PATH = '~/hyperv/prepared-images'
         WORKSPACE_PATH = '/tmp/vm-image-prep'
     }
     
@@ -98,18 +98,27 @@ def setupImagePrepEnvironment() {
     echo "Setting up image preparation environment..."
     
     sh """
-        # Create necessary directories
-        sudo mkdir -p ${env.VHD_BASE_PATH}
-        sudo mkdir -p ${env.PREPARED_IMAGE_PATH}
+        # Create necessary directories in user space
+        mkdir -p ~/hyperv/vhds
+        mkdir -p ~/hyperv/prepared-images
         mkdir -p ${env.WORKSPACE_PATH}
         
-        # Install required packages
-        sudo apt-get update
-        sudo apt-get install -y qemu-utils kpartx cloud-guest-utils
+        # Check if required packages are available
+        if ! command -v qemu-img &> /dev/null; then
+            echo "qemu-img not found, trying to install..."
+            if command -v apt-get &> /dev/null; then
+                sudo apt-get update && sudo apt-get install -y qemu-utils kpartx cloud-guest-utils
+            elif command -v yum &> /dev/null; then
+                sudo yum install -y qemu-img kpartx cloud-utils
+            else
+                echo "Package manager not found, continuing without package installation"
+            fi
+        fi
         
-        # Set permissions
-        sudo chown -R jenkins:jenkins ${env.VHD_BASE_PATH}
-        sudo chown -R jenkins:jenkins ${env.PREPARED_IMAGE_PATH}
+        # Check if we can use sudo for mounting
+        if ! sudo -n true 2>/dev/null; then
+            echo "Warning: No sudo access, some operations may fail"
+        fi
     """
     
     echo "✅ Environment setup completed"
@@ -119,7 +128,7 @@ def downloadBaseImage() {
     echo "Downloading base Ubuntu VHD image..."
     
     sh """
-        cd ${env.VHD_BASE_PATH}
+        cd ~/hyperv/vhds
         
         # Check if base image already exists
         if [ ! -f "livecd.ubuntu-cpc.azure.vhd" ]; then
@@ -331,12 +340,12 @@ def unmountAndExport() {
         
         # Copy to prepared images directory
         echo "Copying prepared image..."
-        cp ${params.IMAGE_NAME}.vhd ${env.PREPARED_IMAGE_PATH}/
+        cp ${params.IMAGE_NAME}.vhd ~/hyperv/prepared-images/
         
         # Verify the prepared image
         echo "Verifying prepared image..."
-        ls -la ${env.PREPARED_IMAGE_PATH}/${params.IMAGE_NAME}.vhd
-        file ${env.PREPARED_IMAGE_PATH}/${params.IMAGE_NAME}.vhd
+        ls -la ~/hyperv/prepared-images/${params.IMAGE_NAME}.vhd
+        file ~/hyperv/prepared-images/${params.IMAGE_NAME}.vhd
         
         echo "✅ Image preparation completed successfully"
     """
