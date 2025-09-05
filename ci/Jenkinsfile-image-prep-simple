@@ -79,6 +79,9 @@ pipeline {
         }
     }
     
+    // Archive the prepared image as an artifact for Windows agent access
+    archiveArtifacts artifacts: "${params.IMAGE_NAME}.vhd", fingerprint: true
+    
     post {
         always {
             script {
@@ -386,7 +389,6 @@ def unmountAndExport() {
         
         # Archive the prepared image as an artifact for Windows agent access
         echo "Archiving prepared image as artifact..."
-        archiveArtifacts artifacts: "${params.IMAGE_NAME}.vhd", fingerprint: true
         
         # Verify the prepared image
         echo "Verifying prepared image..."
