@@ -10,11 +10,6 @@ pipeline {
     }
     
     parameters {
-        string(
-            name: 'SSH_PUBLIC_KEY',
-            defaultValue: 'ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAACAQDMKyQxa9ND05QHJu7fRuoBl2GBcsxqFGFLFkm/JMlvCFAiIqtiCYFMmIp1wAQ0HvcTfVTQeWYHxU06YHb2oVJyHMS30US4eKSSehDSGURyuYV7mjKTrJNlK0QeM5nRn8hJGlZd7w4SCgQQalSlN/lhMBs4/8QNnyO5L6vf/gHwvDH/antZJHOaLIBB15l+SLjRoymRMU1fwu1z1cPXMnW1cXsuvXdZua660m7uTXUBYdIWkdc/7ToR0pfXkYWTxplJ8WDQjvTYsIPKSaTjOVaFz53ukXgRFk/nGC/ZiEEb9gNTz9S5kr1phIE2euzxLNb8pYKfYCsa0LAjdQnvbqeko4ma2+wHhDSicJLSg12Fj87UWuF7jAxKiJk8UOXaXBANevHmX3Qqhr78CQiyVMA9Lbv2X3pSABHokZsc2keP/Aw4s/Q9Hp5kEGrbeDHQN4bJJIQ5prVpIi8TpW/34YudTislHb+8gH0Cg0uvFh46NON6mYeysNDNJyR/bi/cF4Ykv2HUaYWIXYTdveAcixuhXBI2ITS2QKFbG7glIrp/KCNv/t9elJXA4sLwV/sNUkwjU7ITqMP+WZJjUMxOy7BEw/qI/Zy9WkHuQyNNpIjj5gjlq6bvrzoCDK6m9W4Bq+TscyS+e43NLr35mZQXHpoEXvjQsPoaI2UEhy6cjv8xgQ== jenkins@nomad-consul',
-            description: 'SSH public key to inject into the image'
-        )
         choice(
             name: 'NETWORK_CONFIG_TYPE',
             choices: ['dhcp', 'static'],
@@ -192,17 +187,20 @@ def mountAndPrepareVHD() {
 def injectCloudInitConfig() {
     echo "Injecting cloud-init configuration..."
     
-    sh """
-        cd ${env.WORKSPACE_PATH}
-        
-        # Create cloud-init directory structure
-        echo "Creating cloud-init directory structure..."
-        sudo mkdir -p mount-point/var/lib/cloud/seed/nocloud-net
-        sudo mkdir -p mount-point/var/lib/cloud/seed/nocloud
-        
-        # Write user-data
-        echo "Writing user-data..."
-        cat > user-data << 'EOF'
+    script {
+        // Get SSH public key from Jenkins credentials
+        withCredentials([string(credentialsId: 'ssh-public-key', variable: 'SSH_PUBLIC_KEY')]) {
+            sh """
+                cd ${env.WORKSPACE_PATH}
+                
+                # Create cloud-init directory structure
+                echo "Creating cloud-init directory structure..."
+                sudo mkdir -p mount-point/var/lib/cloud/seed/nocloud-net
+                sudo mkdir -p mount-point/var/lib/cloud/seed/nocloud
+                
+                # Write user-data
+                echo "Writing user-data..."
+                cat > user-data << 'EOF'
 #cloud-config
 hostname: ubuntu-nomad-consul
 fqdn: ubuntu-nomad-consul.local
@@ -213,7 +211,7 @@ users:
     sudo: ALL=(ALL) NOPASSWD:ALL
     shell: /bin/bash
     ssh_authorized_keys:
-      - ${params.SSH_PUBLIC_KEY}
+      - ${SSH_PUBLIC_KEY}
     lock_passwd: false
     passwd: \\$6\\$rounds=4096\\$salt\\$hash
     groups: [adm, audio, cdrom, dialout, dip, floppy, lxd, netdev, plugdev, sudo, video]
@@ -265,9 +263,9 @@ runcmd:
 final_message: "VM is ready with cloud-init configuration"
 EOF
         
-        # Write network-config
-        echo "Writing network-config..."
-        cat > network-config << 'EOF'
+                # Write network-config
+                echo "Writing network-config..."
+                cat > network-config << 'EOF'
 network:
   version: 2
   ethernets:
@@ -275,35 +273,37 @@ network:
       dhcp4: true
       dhcp6: false
 EOF
-        
-        # Write meta-data
-        echo "Writing meta-data..."
-        cat > meta-data << 'EOF'
+                
+                # Write meta-data
+                echo "Writing meta-data..."
+                cat > meta-data << 'EOF'
 instance-id: ubuntu-nomad-consul
 local-hostname: ubuntu-nomad-consul
 public-keys:
   - jenkins@nomad-consul
 EOF
-        
-        # Copy files to mounted image
-        sudo cp user-data mount-point/var/lib/cloud/seed/nocloud-net/user-data
-        sudo cp user-data mount-point/var/lib/cloud/seed/nocloud/user-data
-        sudo cp network-config mount-point/var/lib/cloud/seed/nocloud-net/network-config
-        sudo cp network-config mount-point/var/lib/cloud/seed/nocloud/network-config
-        sudo cp meta-data mount-point/var/lib/cloud/seed/nocloud-net/meta-data
-        sudo cp meta-data mount-point/var/lib/cloud/seed/nocloud/meta-data
-        
-        # Set proper permissions
-        sudo chmod 644 mount-point/var/lib/cloud/seed/nocloud-net/*
-        sudo chmod 644 mount-point/var/lib/cloud/seed/nocloud/*
-        
-        # Verify files
-        echo "Verifying cloud-init files..."
-        ls -la mount-point/var/lib/cloud/seed/nocloud-net/
-        ls -la mount-point/var/lib/cloud/seed/nocloud/
-        
-        echo "✅ Cloud-init configuration injected successfully"
-    """
+                
+                # Copy files to mounted image
+                sudo cp user-data mount-point/var/lib/cloud/seed/nocloud-net/user-data
+                sudo cp user-data mount-point/var/lib/cloud/seed/nocloud/user-data
+                sudo cp network-config mount-point/var/lib/cloud/seed/nocloud-net/network-config
+                sudo cp network-config mount-point/var/lib/cloud/seed/nocloud/network-config
+                sudo cp meta-data mount-point/var/lib/cloud/seed/nocloud-net/meta-data
+                sudo cp meta-data mount-point/var/lib/cloud/seed/nocloud/meta-data
+                
+                # Set proper permissions
+                sudo chmod 644 mount-point/var/lib/cloud/seed/nocloud-net/*
+                sudo chmod 644 mount-point/var/lib/cloud/seed/nocloud/*
+                
+                # Verify files
+                echo "Verifying cloud-init files..."
+                ls -la mount-point/var/lib/cloud/seed/nocloud-net/
+                ls -la mount-point/var/lib/cloud/seed/nocloud/
+                
+                echo "✅ Cloud-init configuration injected successfully"
+            """
+        }
+    }
     
     echo "✅ Cloud-init configuration injection completed"
 }
