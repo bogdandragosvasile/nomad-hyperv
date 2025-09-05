@@ -384,14 +384,13 @@ def unmountAndExport() {
         echo "Copying prepared image..."
         cp ${params.IMAGE_NAME}.vhd ~/hyperv/prepared-images/
         
-        # Copy to Jenkins workspace for Windows agent access
-        echo "Copying prepared image to Jenkins workspace..."
-        cp ${params.IMAGE_NAME}.vhd ${env.WORKSPACE}/
+        # Archive the prepared image as an artifact for Windows agent access
+        echo "Archiving prepared image as artifact..."
+        archiveArtifacts artifacts: "${params.IMAGE_NAME}.vhd", fingerprint: true
         
         # Verify the prepared image
         echo "Verifying prepared image..."
         ls -la ~/hyperv/prepared-images/${params.IMAGE_NAME}.vhd
-        ls -la ${env.WORKSPACE}/${params.IMAGE_NAME}.vhd
         # Check if file command is available and use it if possible
         if which file >/dev/null 2>&1; then
             file ~/hyperv/prepared-images/${params.IMAGE_NAME}.vhd

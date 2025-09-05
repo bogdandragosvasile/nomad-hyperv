@@ -363,12 +363,20 @@ def prepareVMImage() {
                           wait: true,
                           propagate: true
     
-    if (imagePrepJob.result == 'SUCCESS') {
-        echo "✅ VM image preparation completed successfully"
-        echo "Prepared image available at: ${preparedImagePath}"
-    } else {
-        error "❌ VM image preparation failed with result: ${imagePrepJob.result}"
-    }
+               if (imagePrepJob.result == 'SUCCESS') {
+               echo "✅ VM image preparation completed successfully"
+               echo "Prepared image available at: ${preparedImagePath}"
+               
+               // Copy the prepared image artifact to current workspace
+               echo "Copying prepared image artifact to current workspace..."
+               copyArtifacts projectName: 'vm-image-prep-simple', 
+                           buildSelector: specific(imagePrepJob.number.toString()),
+                           filter: 'ubuntu-nomad-consul-prepared.vhd',
+                           target: '.'
+               echo "✅ Prepared image copied to workspace"
+           } else {
+               error "❌ VM image preparation failed with result: ${imagePrepJob.result}"
+           }
 }
 
 def provisionInfrastructure() {
