@@ -210,19 +210,18 @@ def mountAndPrepareVHD() {
         OFFSET_BYTES=\$((PARTITION_OFFSET * 512))
         echo "Partition offset: \$PARTITION_OFFSET sectors (\$OFFSET_BYTES bytes)"
         
-        # Extract filesystem using 7zip (container-compatible approach)
-        echo "Extracting filesystem using 7zip..."
+        # Extract filesystem using debugfs (container-compatible approach)
+        echo "Extracting filesystem using debugfs..."
         sudo mkdir -p mount-point
-        # Use 7zip to extract the filesystem content
-        echo "Installing 7zip..."
-        sudo apt-get update && sudo apt-get install -y p7zip-full
+        # Install e2fsprogs for debugfs
+        echo "Installing e2fsprogs..."
+        sudo apt-get update && sudo apt-get install -y e2fsprogs
         echo "Extracting filesystem with offset \$OFFSET_BYTES..."
         # Create a temporary file with the partition content (optimized with larger block size)
         dd if=working-image.raw bs=1M skip=\$((OFFSET_BYTES / 1048576)) of=partition.img
-        # Extract the filesystem
-        7z x partition.img -oextracted -y
-        # Copy extracted content to mount-point
-        sudo cp -r extracted/* mount-point/ 2>/dev/null || true
+        # Extract the filesystem using debugfs
+        echo "Extracting filesystem content..."
+        sudo debugfs -R "rdump / mount-point" partition.img
         
         # Verify mount
         ls -la mount-point/
@@ -372,7 +371,7 @@ def unmountAndExport() {
         
         # Clean up extracted files
         echo "Cleaning up extracted files..."
-        sudo rm -rf extracted partition.img
+        sudo rm -rf partition.img
         
         # Convert back to VHD format
         echo "Converting back to VHD format..."
