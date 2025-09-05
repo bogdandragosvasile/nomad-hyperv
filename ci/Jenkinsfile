@@ -74,6 +74,20 @@ pipeline {
             }
         }
         
+        stage('Prepare VM Image') {
+            when {
+                anyOf {
+                    expression { params.DEPLOYMENT_TYPE == 'full' }
+                    expression { params.DEPLOYMENT_TYPE == 'infrastructure' }
+                }
+            }
+            steps {
+                script {
+                    prepareVMImage()
+                }
+            }
+        }
+        
         stage('Provision Infrastructure') {
             when {
                 anyOf {
@@ -317,22 +331,63 @@ def setupEnvironment() {
     echo "Environment setup completed"
 }
 
+def prepareVMImage() {
+    echo "Preparing VM image with cloud-init configuration..."
+    
+    if (env.SIMULATION_MODE == 'true') {
+        echo "SIMULATION MODE: Skipping VM image preparation..."
+        echo "In a real deployment, this would prepare the Ubuntu VHD with SSH keys and networking"
+        return
+    }
+    
+    // Check if prepared image already exists
+    def preparedImagePath = '/home/jenkins/hyperv/prepared-images/ubuntu-nomad-consul-prepared.vhd'
+    
+    if (fileExists(preparedImagePath)) {
+        echo "Prepared VM image already exists at: ${preparedImagePath}"
+        echo "Skipping image preparation step"
+        return
+    }
+    
+    echo "Prepared VM image not found. Triggering image preparation pipeline..."
+    
+    // Trigger the VM image preparation pipeline
+    def imagePrepJob = build job: 'vm-image-prep-simple', 
+                          parameters: [
+                              string(name: 'NETWORK_CONFIG_TYPE', value: 'dhcp'),
+                              string(name: 'STATIC_IP', value: '192.168.1.100'),
+                              string(name: 'GATEWAY', value: '192.168.1.1'),
+                              string(name: 'DNS_SERVERS', value: '8.8.8.8,8.8.4.4'),
+                              string(name: 'IMAGE_NAME', value: 'ubuntu-nomad-consul-prepared')
+                          ],
+                          wait: true,
+                          propagate: true
+    
+    if (imagePrepJob.result == 'SUCCESS') {
+        echo "✅ VM image preparation completed successfully"
+        echo "Prepared image available at: ${preparedImagePath}"
+    } else {
+        error "❌ VM image preparation failed with result: ${imagePrepJob.result}"
+    }
+}
+
 def provisionInfrastructure() {
-    echo "Provisioning infrastructure with PowerShell..."
+    echo "Provisioning infrastructure with prepared VM image..."
     
     dir('infra/scripts') {
-        // Run PowerShell script to create Hyper-V VMs
+        // Run PowerShell script to create Hyper-V VMs using prepared image
         if (params.DRY_RUN) {
-            echo "DRY RUN: Would run PowerShell script for Hyper-V VMs"
+            echo "DRY RUN: Would run PowerShell script for Hyper-V VMs with prepared image"
         } else {
             def destroyFlag = params.DESTROY_EXISTING ? '-DestroyExisting' : ''
             def dryRunFlag = params.DRY_RUN ? '-DryRun' : ''
-            powershell ".\\create-hyperv-vms-cloudinit.ps1 $destroyFlag $dryRunFlag"
+            def preparedImageFlag = '-UsePreparedImage'
+            powershell ".\\create-hyperv-vms-from-prepared-image.ps1 $destroyFlag $dryRunFlag $preparedImageFlag"
         }
         
-        // Wait for VMs to be ready
-        echo "Waiting for VMs to initialize and configure networking..."
-        sleep(300) // 5 minutes for cloud-init to configure networking and SSH
+        // Wait for VMs to be ready (shorter wait since image is pre-configured)
+        echo "Waiting for VMs to initialize with pre-configured image..."
+        sleep(120) // 2 minutes for VMs to boot and network to be ready
         
         // Set environment variables for VM IPs
         env.CONSUL_SERVERS = "192.168.1.100,192.168.1.101,192.168.1.102"
