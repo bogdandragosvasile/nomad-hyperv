@@ -343,7 +343,7 @@ users:
     sudo: ALL=(ALL) NOPASSWD:ALL
     shell: /bin/bash
     ssh_authorized_keys:
-      - ${params.SSH_PUBLIC_KEY}
+      - """ + params.SSH_PUBLIC_KEY + """
     lock_passwd: false
     passwd: \\$6\\$rounds=4096\\$salt\\$hash
     groups: [adm, audio, cdrom, dialout, dip, floppy, lxd, netdev, plugdev, sudo, video]
