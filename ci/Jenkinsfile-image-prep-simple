@@ -214,8 +214,12 @@ def mountAndPrepareVHD() {
         echo "Mounting partition using loop device..."
         sudo mkdir -p mount-point
         # Create loop device and mount with offset
-        sudo losetup -f
         LOOP_DEV=\$(sudo losetup -f)
+        if [ -z "\$LOOP_DEV" ]; then
+            echo "No loop devices available, creating one..."
+            sudo mknod /dev/loop0 b 7 0
+            LOOP_DEV=/dev/loop0
+        fi
         sudo losetup -o \$OFFSET_BYTES \$LOOP_DEV working-image.raw
         sudo mount \$LOOP_DEV mount-point
         
@@ -372,6 +376,10 @@ def unmountAndExport() {
         LOOP_DEV=\$(sudo losetup -j working-image.raw | cut -d: -f1)
         if [ -n "\$LOOP_DEV" ]; then
             sudo losetup -d \$LOOP_DEV
+        fi
+        # Clean up loop device if we created it
+        if [ -e /dev/loop0 ]; then
+            sudo rm -f /dev/loop0
         fi
         
         # Convert back to VHD format
