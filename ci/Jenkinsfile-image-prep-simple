@@ -1,0 +1,360 @@
+pipeline {
+    agent {
+        label 'linux-agent'
+    }
+    
+    environment {
+        VHD_BASE_PATH = '/opt/hyperv/vhds'
+        PREPARED_IMAGE_PATH = '/opt/hyperv/prepared-images'
+        WORKSPACE_PATH = '/tmp/vm-image-prep'
+    }
+    
+    parameters {
+        string(
+            name: 'SSH_PUBLIC_KEY',
+            defaultValue: 'ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAACAQDMKyQxa9ND05QHJu7fRuoBl2GBcsxqFGFLFkm/JMlvCFAiIqtiCYFMmIp1wAQ0HvcTfVTQeWYHxU06YHb2oVJyHMS30US4eKSSehDSGURyuYV7mjKTrJNlK0QeM5nRn8hJGlZd7w4SCgQQalSlN/lhMBs4/8QNnyO5L6vf/gHwvDH/antZJHOaLIBB15l+SLjRoymRMU1fwu1z1cPXMnW1cXsuvXdZua660m7uTXUBYdIWkdc/7ToR0pfXkYWTxplJ8WDQjvTYsIPKSaTjOVaFz53ukXgRFk/nGC/ZiEEb9gNTz9S5kr1phIE2euzxLNb8pYKfYCsa0LAjdQnvbqeko4ma2+wHhDSicJLSg12Fj87UWuF7jAxKiJk8UOXaXBANevHmX3Qqhr78CQiyVMA9Lbv2X3pSABHokZsc2keP/Aw4s/Q9Hp5kEGrbeDHQN4bJJIQ5prVpIi8TpW/34YudTislHb+8gH0Cg0uvFh46NON6mYeysNDNJyR/bi/cF4Ykv2HUaYWIXYTdveAcixuhXBI2ITS2QKFbG7glIrp/KCNv/t9elJXA4sLwV/sNUkwjU7ITqMP+WZJjUMxOy7BEw/qI/Zy9WkHuQyNNpIjj5gjlq6bvrzoCDK6m9W4Bq+TscyS+e43NLr35mZQXHpoEXvjQsPoaI2UEhy6cjv8xgQ== jenkins@nomad-consul',
+            description: 'SSH public key to inject into the image'
+        )
+        choice(
+            name: 'NETWORK_CONFIG_TYPE',
+            choices: ['dhcp', 'static'],
+            description: 'Network configuration type'
+        )
+        string(
+            name: 'STATIC_IP',
+            defaultValue: '192.168.1.100',
+            description: 'Static IP address (if using static networking)'
+        )
+        string(
+            name: 'GATEWAY',
+            defaultValue: '192.168.1.1',
+            description: 'Gateway IP address (if using static networking)'
+        )
+        string(
+            name: 'DNS_SERVERS',
+            defaultValue: '8.8.8.8,8.8.4.4',
+            description: 'DNS servers (comma-separated)'
+        )
+        string(
+            name: 'IMAGE_NAME',
+            defaultValue: 'ubuntu-nomad-consul-prepared',
+            description: 'Name for the prepared image'
+        )
+    }
+    
+    stages {
+        stage('Setup Environment') {
+            steps {
+                script {
+                    setupImagePrepEnvironment()
+                }
+            }
+        }
+        
+        stage('Download Base Image') {
+            steps {
+                script {
+                    downloadBaseImage()
+                }
+            }
+        }
+        
+        stage('Mount and Prepare VHD') {
+            steps {
+                script {
+                    mountAndPrepareVHD()
+                }
+            }
+        }
+        
+        stage('Inject Cloud-Init Configuration') {
+            steps {
+                script {
+                    injectCloudInitConfig()
+                }
+            }
+        }
+        
+        stage('Unmount and Export') {
+            steps {
+                script {
+                    unmountAndExport()
+                }
+            }
+        }
+    }
+    
+    post {
+        always {
+            script {
+                cleanupWorkspace()
+            }
+        }
+        success {
+            echo "✅ VM image preparation completed successfully!"
+        }
+        failure {
+            echo "❌ VM image preparation failed!"
+        }
+    }
+}
+
+def setupImagePrepEnvironment() {
+    echo "Setting up image preparation environment..."
+    
+    sh """
+        # Create necessary directories
+        sudo mkdir -p ${env.VHD_BASE_PATH}
+        sudo mkdir -p ${env.PREPARED_IMAGE_PATH}
+        mkdir -p ${env.WORKSPACE_PATH}
+        
+        # Install required packages
+        sudo apt-get update
+        sudo apt-get install -y qemu-utils kpartx cloud-guest-utils
+        
+        # Set permissions
+        sudo chown -R jenkins:jenkins ${env.VHD_BASE_PATH}
+        sudo chown -R jenkins:jenkins ${env.PREPARED_IMAGE_PATH}
+    """
+    
+    echo "✅ Environment setup completed"
+}
+
+def downloadBaseImage() {
+    echo "Downloading base Ubuntu VHD image..."
+    
+    sh """
+        cd ${env.VHD_BASE_PATH}
+        
+        # Check if base image already exists
+        if [ ! -f "livecd.ubuntu-cpc.azure.vhd" ]; then
+            echo "Downloading Ubuntu cloud image..."
+            wget -O livecd.ubuntu-cpc.azure.vhd.tar.gz \\
+                "https://cloud-images.ubuntu.com/jammy/current/jammy-server-cloudimg-amd64-azure.vhd.tar.gz"
+            
+            echo "Extracting VHD from tar.gz..."
+            tar -xzf livecd.ubuntu-cpc.azure.vhd.tar.gz
+            rm livecd.ubuntu-cpc.azure.vhd.tar.gz
+        else
+            echo "Base image already exists, skipping download"
+        fi
+        
+        # Verify the VHD file
+        ls -la livecd.ubuntu-cpc.azure.vhd
+        file livecd.ubuntu-cpc.azure.vhd
+    """
+    
+    echo "✅ Base image download completed"
+}
+
+def mountAndPrepareVHD() {
+    echo "Mounting VHD and preparing for modification..."
+    
+    sh """
+        cd ${env.WORKSPACE_PATH}
+        
+        # Create a working copy of the VHD
+        echo "Creating working copy of VHD..."
+        cp ${env.VHD_BASE_PATH}/livecd.ubuntu-cpc.azure.vhd ./working-image.vhd
+        
+        # Convert VHD to raw format for mounting
+        echo "Converting VHD to raw format..."
+        qemu-img convert -f vpc -O raw working-image.vhd working-image.raw
+        
+        # Create mount points
+        mkdir -p mount-point
+        
+        # Find the partition offset
+        echo "Finding partition offset..."
+        PARTITION_OFFSET=\$(fdisk -l working-image.raw | grep "Linux filesystem" | awk '{print \$2}')
+        if [ -z "\$PARTITION_OFFSET" ]; then
+            echo "Error: Could not find partition offset"
+            exit 1
+        fi
+        
+        # Calculate offset in bytes (sectors * 512)
+        OFFSET_BYTES=\$((PARTITION_OFFSET * 512))
+        echo "Partition offset: \$PARTITION_OFFSET sectors (\$OFFSET_BYTES bytes)"
+        
+        # Mount the partition
+        echo "Mounting partition..."
+        sudo mount -o loop,offset=\$OFFSET_BYTES working-image.raw mount-point
+        
+        # Verify mount
+        ls -la mount-point/
+        
+        echo "✅ VHD mounted successfully"
+    """
+    
+    echo "✅ VHD mounting completed"
+}
+
+def injectCloudInitConfig() {
+    echo "Injecting cloud-init configuration..."
+    
+    sh """
+        cd ${env.WORKSPACE_PATH}
+        
+        # Create cloud-init directory structure
+        echo "Creating cloud-init directory structure..."
+        sudo mkdir -p mount-point/var/lib/cloud/seed/nocloud-net
+        sudo mkdir -p mount-point/var/lib/cloud/seed/nocloud
+        
+        # Write user-data
+        echo "Writing user-data..."
+        cat > user-data << 'EOF'
+#cloud-config
+hostname: ubuntu-nomad-consul
+fqdn: ubuntu-nomad-consul.local
+manage_etc_hosts: true
+
+users:
+  - name: ubuntu
+    sudo: ALL=(ALL) NOPASSWD:ALL
+    shell: /bin/bash
+    ssh_authorized_keys:
+      - ${params.SSH_PUBLIC_KEY}
+    lock_passwd: false
+    passwd: \\$6\\$rounds=4096\\$salt\\$hash
+    groups: [adm, audio, cdrom, dialout, dip, floppy, lxd, netdev, plugdev, sudo, video]
+
+ssh_pwauth: true
+
+package_update: true
+package_upgrade: true
+
+packages:
+  - openssh-server
+  - curl
+  - wget
+  - unzip
+  - python3
+  - python3-pip
+  - python3-venv
+  - git
+  - htop
+  - vim
+  - net-tools
+  - dnsutils
+  - ca-certificates
+  - gnupg
+  - lsb-release
+  - software-properties-common
+  - apt-transport-https
+
+write_files:
+  - path: /etc/ssh/sshd_config.d/99-cloud-init.conf
+    content: |
+      PasswordAuthentication yes
+      PubkeyAuthentication yes
+      AuthorizedKeysFile .ssh/authorized_keys
+      PermitRootLogin no
+      MaxAuthTries 6
+      ClientAliveInterval 60
+      ClientAliveCountMax 3
+    permissions: '0644'
+
+runcmd:
+  - systemctl enable ssh
+  - systemctl restart ssh
+  - ufw allow ssh
+  - ufw --force enable
+  - echo "VM is ready with cloud-init configuration" > /var/log/vm-ready.log
+  - systemctl restart networking
+
+final_message: "VM is ready with cloud-init configuration"
+EOF
+        
+        # Write network-config
+        echo "Writing network-config..."
+        cat > network-config << 'EOF'
+network:
+  version: 2
+  ethernets:
+    eth0:
+      dhcp4: true
+      dhcp6: false
+EOF
+        
+        # Write meta-data
+        echo "Writing meta-data..."
+        cat > meta-data << 'EOF'
+instance-id: ubuntu-nomad-consul
+local-hostname: ubuntu-nomad-consul
+public-keys:
+  - jenkins@nomad-consul
+EOF
+        
+        # Copy files to mounted image
+        sudo cp user-data mount-point/var/lib/cloud/seed/nocloud-net/user-data
+        sudo cp user-data mount-point/var/lib/cloud/seed/nocloud/user-data
+        sudo cp network-config mount-point/var/lib/cloud/seed/nocloud-net/network-config
+        sudo cp network-config mount-point/var/lib/cloud/seed/nocloud/network-config
+        sudo cp meta-data mount-point/var/lib/cloud/seed/nocloud-net/meta-data
+        sudo cp meta-data mount-point/var/lib/cloud/seed/nocloud/meta-data
+        
+        # Set proper permissions
+        sudo chmod 644 mount-point/var/lib/cloud/seed/nocloud-net/*
+        sudo chmod 644 mount-point/var/lib/cloud/seed/nocloud/*
+        
+        # Verify files
+        echo "Verifying cloud-init files..."
+        ls -la mount-point/var/lib/cloud/seed/nocloud-net/
+        ls -la mount-point/var/lib/cloud/seed/nocloud/
+        
+        echo "✅ Cloud-init configuration injected successfully"
+    """
+    
+    echo "✅ Cloud-init configuration injection completed"
+}
+
+def unmountAndExport() {
+    echo "Unmounting VHD and exporting prepared image..."
+    
+    sh """
+        cd ${env.WORKSPACE_PATH}
+        
+        # Unmount the partition
+        echo "Unmounting partition..."
+        sudo umount mount-point
+        
+        # Convert back to VHD format
+        echo "Converting back to VHD format..."
+        qemu-img convert -f raw -O vpc working-image.raw ${params.IMAGE_NAME}.vhd
+        
+        # Copy to prepared images directory
+        echo "Copying prepared image..."
+        cp ${params.IMAGE_NAME}.vhd ${env.PREPARED_IMAGE_PATH}/
+        
+        # Verify the prepared image
+        echo "Verifying prepared image..."
+        ls -la ${env.PREPARED_IMAGE_PATH}/${params.IMAGE_NAME}.vhd
+        file ${env.PREPARED_IMAGE_PATH}/${params.IMAGE_NAME}.vhd
+        
+        echo "✅ Image preparation completed successfully"
+    """
+    
+    echo "✅ VHD unmounting and export completed"
+}
+
+def cleanupWorkspace() {
+    echo "Cleaning up workspace..."
+    
+    sh """
+        cd ${env.WORKSPACE_PATH}
+        
+        # Unmount if still mounted
+        if mountpoint -q mount-point; then
+            sudo umount mount-point
+        fi
+        
+        # Clean up files
+        rm -f working-image.vhd working-image.raw
+        rm -f user-data network-config meta-data
+        rm -rf mount-point
+        
+        echo "✅ Workspace cleanup completed"
+    """
+    
+    echo "✅ Workspace cleanup completed"
+}
