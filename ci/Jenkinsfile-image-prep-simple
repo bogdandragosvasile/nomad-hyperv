@@ -1,6 +1,6 @@
 pipeline {
     agent {
-        label 'nomad-consul-agent'
+        label 'linux-vm-prep-agent'
     }
     
     environment {

@@ -1,0 +1,24 @@
+version: '3.8'
+
+services:
+  jenkins-agent-linux:
+    build: .
+    container_name: jenkins-agent-linux
+    environment:
+      - JENKINS_URL=http://host.docker.internal:8080
+      - JENKINS_SECRET=650e9ff3c2b4c690e119f930802e49fd8e5122ccd72e5ce0e7b77cfc66a36dea
+      - JENKINS_AGENT_NAME=linux-vm-prep-agent
+      - JENKINS_AGENT_WORKDIR=/home/jenkins/agent
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - jenkins-agent-linux-data:/home/jenkins/agent
+    networks:
+      - jenkins
+    restart: unless-stopped
+
+volumes:
+  jenkins-agent-linux-data:
+
+networks:
+  jenkins:
+    external: true
