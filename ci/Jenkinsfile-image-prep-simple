@@ -145,7 +145,11 @@ def downloadBaseImage() {
         
         # Verify the VHD file
         ls -la livecd.ubuntu-cpc.azure.vhd
-        file livecd.ubuntu-cpc.azure.vhd
+        if command -v file &> /dev/null; then
+            file livecd.ubuntu-cpc.azure.vhd
+        else
+            echo "file command not available, skipping file type check"
+        fi
     """
     
     echo "✅ Base image download completed"
@@ -345,7 +349,11 @@ def unmountAndExport() {
         # Verify the prepared image
         echo "Verifying prepared image..."
         ls -la ~/hyperv/prepared-images/${params.IMAGE_NAME}.vhd
-        file ~/hyperv/prepared-images/${params.IMAGE_NAME}.vhd
+        if command -v file &> /dev/null; then
+            file ~/hyperv/prepared-images/${params.IMAGE_NAME}.vhd
+        else
+            echo "file command not available, skipping file type check"
+        fi
         
         echo "✅ Image preparation completed successfully"
     """
