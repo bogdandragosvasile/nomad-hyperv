@@ -210,12 +210,19 @@ def mountAndPrepareVHD() {
         OFFSET_BYTES=\$((PARTITION_OFFSET * 512))
         echo "Partition offset: \$PARTITION_OFFSET sectors (\$OFFSET_BYTES bytes)"
         
-        # Mount the partition using direct mount with offset (container-compatible)
-        echo "Mounting partition using direct mount with offset..."
+        # Extract filesystem using 7zip (container-compatible approach)
+        echo "Extracting filesystem using 7zip..."
         sudo mkdir -p mount-point
-        # Use mount with offset directly (no loop device needed)
-        echo "Mounting with offset \$OFFSET_BYTES..."
-        sudo mount -o loop,offset=\$OFFSET_BYTES working-image.raw mount-point
+        # Use 7zip to extract the filesystem content
+        echo "Installing 7zip..."
+        sudo apt-get update && sudo apt-get install -y p7zip-full
+        echo "Extracting filesystem with offset \$OFFSET_BYTES..."
+        # Create a temporary file with the partition content
+        dd if=working-image.raw bs=1 skip=\$OFFSET_BYTES of=partition.img
+        # Extract the filesystem
+        7z x partition.img -oextracted -y
+        # Copy extracted content to mount-point
+        sudo cp -r extracted/* mount-point/ 2>/dev/null || true
         
         # Verify mount
         ls -la mount-point/
@@ -363,9 +370,9 @@ def unmountAndExport() {
     sh """
         cd ${env.WORKSPACE_PATH}
         
-        # Unmount the partition
-        echo "Unmounting partition..."
-        sudo umount mount-point
+        # Clean up extracted files
+        echo "Cleaning up extracted files..."
+        sudo rm -rf extracted partition.img
         
         # Convert back to VHD format
         echo "Converting back to VHD format..."
