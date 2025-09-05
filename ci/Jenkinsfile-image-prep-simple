@@ -193,8 +193,8 @@ def injectCloudInitConfig() {
             // Write SSH key to a file to avoid Groovy interpretation issues
             writeFile file: 'ssh-key.txt', text: env.SSH_PUBLIC_KEY
             
-            sh """
-                cd ${env.WORKSPACE_PATH}
+            sh '''
+                cd /tmp/vm-image-prep
                 
                 # Create cloud-init directory structure
                 echo "Creating cloud-init directory structure..."
@@ -307,7 +307,7 @@ EOF
                 ls -la mount-point/var/lib/cloud/seed/nocloud/
                 
                 echo "✅ Cloud-init configuration injected successfully"
-            """
+            '''
         }
     }
     
