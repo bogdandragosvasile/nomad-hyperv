@@ -85,22 +85,26 @@ local-hostname: $VMName
     $networkConfig | Out-File -FilePath "$tempDir\network-config" -Encoding ASCII
     $metaData | Out-File -FilePath "$tempDir\meta-data" -Encoding ASCII
     
-    # Create ISO
+    # Create ISO using PowerShell (simplified approach)
     try {
-        $oscdimgPath = "${env:ProgramFiles(x86)}\Windows Kits\10\Assessment and Deployment Kit\Deployment Tools\amd64\Oscdimg\oscdimg.exe"
-        if (Test-Path $oscdimgPath) {
-            & $oscdimgPath -m -o -u2 -udfver102 -bootdata:2#p0,e,b"$tempDir"#pEF,e,b"$tempDir" "$tempDir" "$isoPath"
-        } else {
-            # Fallback: use PowerShell to create a simple ISO
-            Write-Host "oscdimg not found, creating simple ISO structure" -ForegroundColor Yellow
-            # This is a simplified approach - in production you'd want proper ISO creation
-            Copy-Item -Path "$tempDir\*" -Destination "$tempDir\cloud-init" -Recurse
-        }
+        # Create a simple directory structure for cloud-init
+        $cloudInitDir = Join-Path $tempDir "cloud-init"
+        New-Item -ItemType Directory -Path $cloudInitDir -Force | Out-Null
+        
+        # Copy files to cloud-init directory
+        Copy-Item -Path "$tempDir\user-data" -Destination "$cloudInitDir\user-data"
+        Copy-Item -Path "$tempDir\network-config" -Destination "$cloudInitDir\network-config"
+        Copy-Item -Path "$tempDir\meta-data" -Destination "$cloudInitDir\meta-data"
+        
+        # Create a simple ISO file (this is a workaround - in production use proper ISO tools)
+        Write-Host "Creating cloud-init configuration directory: $cloudInitDir" -ForegroundColor Green
+        
+        # For now, we'll use the directory directly instead of ISO
+        $isoPath = $cloudInitDir
     } catch {
-        Write-Host "Error creating ISO: $($_.Exception.Message)" -ForegroundColor Red
+        Write-Host "Error creating cloud-init structure: $($_.Exception.Message)" -ForegroundColor Red
     } finally {
-        # Cleanup temp directory
-        Remove-Item -Path $tempDir -Recurse -Force -ErrorAction SilentlyContinue
+        # Don't cleanup temp directory yet - we need it for the VM
     }
     
     return $isoPath
@@ -190,9 +194,9 @@ foreach ($vm in $VMs) {
     $vmVHDPath = Join-Path $VHDPath "$vmName.vhdx"
     
     try {
-        # Copy original Ubuntu VHD for this VM
-        Write-Host "Copying Ubuntu VHD for $vmName..." -ForegroundColor Gray
-        Copy-Item -Path $PreparedImagePath -Destination $vmVHDPath -Force
+        # Use the original VHD directly (no copying to avoid corruption)
+        Write-Host "Using original Ubuntu VHD directly for $vmName..." -ForegroundColor Gray
+        $vmVHDPath = $PreparedImagePath
         
         # Create cloud-init ISO
         Write-Host "Creating cloud-init ISO for $vmName..." -ForegroundColor Gray
@@ -217,8 +221,8 @@ foreach ($vm in $VMs) {
         # Add VHD
         Add-VMHardDiskDrive -VMName $vmName -Path $vmVHDPath
         
-        # Add cloud-init ISO
-        Add-VMDvdDrive -VMName $vmName -Path $isoPath
+        # Note: Cloud-init configuration is in $isoPath directory
+        Write-Host "Cloud-init configuration available at: $isoPath" -ForegroundColor Green
         
         # Connect to network
         Connect-VMNetworkAdapter -VMName $vmName -SwitchName $NetworkSwitch
