@@ -238,9 +238,6 @@ def injectCloudInitConfig() {
     script {
         // Get SSH public key from Jenkins credentials
         withCredentials([string(credentialsId: 'ssh-public-key', variable: 'SSH_PUBLIC_KEY')]) {
-            // Write SSH key to a file to avoid Groovy interpretation issues
-            writeFile file: 'ssh-key.txt', text: env.SSH_PUBLIC_KEY
-            
             sh '''
                 mkdir -p /tmp/vm-image-prep
                 cd /tmp/vm-image-prep
@@ -249,6 +246,9 @@ def injectCloudInitConfig() {
                 echo "Creating cloud-init directory structure..."
                 sudo mkdir -p mount-point/var/lib/cloud/seed/nocloud-net
                 sudo mkdir -p mount-point/var/lib/cloud/seed/nocloud
+                
+                # Write SSH key to file in the correct directory
+                echo "''' + env.SSH_PUBLIC_KEY + '''" > ssh-key.txt
                 
                 # Read SSH key from file
                 SSH_KEY=\$(cat ssh-key.txt)
