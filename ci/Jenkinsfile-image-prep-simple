@@ -103,29 +103,41 @@ def setupImagePrepEnvironment() {
         mkdir -p ~/hyperv/prepared-images
         mkdir -p ${env.WORKSPACE_PATH}
         
-        # Install required packages
-        echo "Installing required packages..."
-        if command -v apt-get &> /dev/null; then
-            echo "Using apt-get to install packages..."
-            sudo apt-get update
-            sudo apt-get install -y qemu-utils kpartx cloud-guest-utils
-        elif command -v yum &> /dev/null; then
-            echo "Using yum to install packages..."
-            sudo yum install -y qemu-img kpartx cloud-utils
-        elif command -v dnf &> /dev/null; then
-            echo "Using dnf to install packages..."
-            sudo dnf install -y qemu-img kpartx cloud-utils
-        else
-            echo "No supported package manager found, trying to continue..."
-        fi
-        
-        # Verify qemu-img is available
+        # Check if qemu-img is available
         if command -v qemu-img &> /dev/null; then
-            echo "✅ qemu-img is available"
+            echo "✅ qemu-img is already available"
             qemu-img --version
         else
-            echo "❌ qemu-img is still not available after installation attempt"
-            exit 1
+            echo "qemu-img not found, trying to install packages..."
+            
+            # Try to install packages with sudo if available
+            if command -v sudo &> /dev/null; then
+                echo "Using sudo to install packages..."
+                if command -v apt-get &> /dev/null; then
+                    echo "Using apt-get to install packages..."
+                    sudo apt-get update
+                    sudo apt-get install -y qemu-utils kpartx cloud-guest-utils
+                elif command -v yum &> /dev/null; then
+                    echo "Using yum to install packages..."
+                    sudo yum install -y qemu-img kpartx cloud-utils
+                elif command -v dnf &> /dev/null; then
+                    echo "Using dnf to install packages..."
+                    sudo dnf install -y qemu-img kpartx cloud-utils
+                fi
+            else
+                echo "❌ sudo not available, cannot install packages"
+                echo "Please install qemu-utils package manually on the agent"
+                exit 1
+            fi
+            
+            # Verify qemu-img is available after installation
+            if command -v qemu-img &> /dev/null; then
+                echo "✅ qemu-img is now available"
+                qemu-img --version
+            else
+                echo "❌ qemu-img is still not available after installation attempt"
+                exit 1
+            fi
         fi
         
         # Check if we can use sudo for mounting
