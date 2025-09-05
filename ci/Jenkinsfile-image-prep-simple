@@ -214,7 +214,7 @@ def mountAndPrepareVHD() {
         echo "Mounting partition using loop device..."
         sudo mkdir -p mount-point
         # Use losetup to create a loop device, then mount with offset
-        sudo losetup -o ${OFFSET_BYTES} /dev/loop0 working-image.raw
+        sudo losetup -o \$OFFSET_BYTES /dev/loop0 working-image.raw
         sudo mount /dev/loop0 mount-point
         
         # Verify mount
