@@ -348,6 +348,8 @@ def cleanupWorkspace() {
     echo "Cleaning up workspace..."
     
     sh """
+        # Create workspace directory if it doesn't exist
+        mkdir -p ${env.WORKSPACE_PATH}
         cd ${env.WORKSPACE_PATH}
         
         # Unmount if still mounted
