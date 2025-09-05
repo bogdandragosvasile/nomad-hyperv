@@ -369,10 +369,11 @@ def prepareVMImage() {
                
                // Copy the prepared image artifact to current workspace
                echo "Copying prepared image artifact to current workspace..."
-               copyArtifacts projectName: 'vm-image-prep-simple', 
-                           buildSelector: specific(imagePrepJob.number.toString()),
-                           filter: 'ubuntu-nomad-consul-prepared.vhd',
-                           target: '.'
+               step([$class: 'CopyArtifact',
+                     projectName: 'vm-image-prep-simple',
+                     buildSelector: [$class: 'SpecificBuildSelector', buildNumber: imagePrepJob.number.toString()],
+                     filter: 'ubuntu-nomad-consul-prepared.vhd',
+                     target: '.'])
                echo "✅ Prepared image copied to workspace"
            } else {
                error "❌ VM image preparation failed with result: ${imagePrepJob.result}"
