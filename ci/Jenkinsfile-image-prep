@@ -333,6 +333,7 @@ def cleanupWorkspace() {
 }
 
 def createUserData() {
+    def sshKey = params.SSH_PUBLIC_KEY
     return """#cloud-config
 hostname: ubuntu-nomad-consul
 fqdn: ubuntu-nomad-consul.local
@@ -343,7 +344,7 @@ users:
     sudo: ALL=(ALL) NOPASSWD:ALL
     shell: /bin/bash
     ssh_authorized_keys:
-      - """ + params.SSH_PUBLIC_KEY + """
+      - ${sshKey}
     lock_passwd: false
     passwd: \\$6\\$rounds=4096\\$salt\\$hash
     groups: [adm, audio, cdrom, dialout, dip, floppy, lxd, netdev, plugdev, sudo, video]
