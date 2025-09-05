@@ -7,7 +7,22 @@ param(
 # Configuration
 $VMPath = "C:\Hyper-V\VMs"
 $VHDPath = "C:\Hyper-V\VHDs"
-$PreparedImagePath = "C:\Hyper-V\Prepared-Images\ubuntu-nomad-consul-prepared.vhd"
+# Look for prepared image in Jenkins workspace first, then fallback to Hyper-V directory
+$WorkspaceImagePath = "C:\Jenkins\workspace\workspace\nomad-consul-deployment\ubuntu-nomad-consul-prepared.vhd"
+$HyperVImagePath = "C:\Hyper-V\Prepared-Images\ubuntu-nomad-consul-prepared.vhd"
+
+if (Test-Path $WorkspaceImagePath) {
+    $PreparedImagePath = $WorkspaceImagePath
+    Write-Host "Using prepared image from workspace: $PreparedImagePath" -ForegroundColor Green
+} elseif (Test-Path $HyperVImagePath) {
+    $PreparedImagePath = $HyperVImagePath
+    Write-Host "Using prepared image from Hyper-V directory: $PreparedImagePath" -ForegroundColor Green
+} else {
+    Write-Host "Prepared image not found in either location:" -ForegroundColor Red
+    Write-Host "  Workspace: $WorkspaceImagePath" -ForegroundColor Red
+    Write-Host "  Hyper-V: $HyperVImagePath" -ForegroundColor Red
+    exit 1
+}
 $NetworkSwitch = "NAT-Switch"
 $Memory = 2GB
 $ProcessorCount = 2
