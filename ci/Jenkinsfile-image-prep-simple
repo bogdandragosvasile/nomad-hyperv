@@ -103,16 +103,29 @@ def setupImagePrepEnvironment() {
         mkdir -p ~/hyperv/prepared-images
         mkdir -p ${env.WORKSPACE_PATH}
         
-        # Check if required packages are available
-        if ! command -v qemu-img &> /dev/null; then
-            echo "qemu-img not found, trying to install..."
-            if command -v apt-get &> /dev/null; then
-                sudo apt-get update && sudo apt-get install -y qemu-utils kpartx cloud-guest-utils
-            elif command -v yum &> /dev/null; then
-                sudo yum install -y qemu-img kpartx cloud-utils
-            else
-                echo "Package manager not found, continuing without package installation"
-            fi
+        # Install required packages
+        echo "Installing required packages..."
+        if command -v apt-get &> /dev/null; then
+            echo "Using apt-get to install packages..."
+            sudo apt-get update
+            sudo apt-get install -y qemu-utils kpartx cloud-guest-utils
+        elif command -v yum &> /dev/null; then
+            echo "Using yum to install packages..."
+            sudo yum install -y qemu-img kpartx cloud-utils
+        elif command -v dnf &> /dev/null; then
+            echo "Using dnf to install packages..."
+            sudo dnf install -y qemu-img kpartx cloud-utils
+        else
+            echo "No supported package manager found, trying to continue..."
+        fi
+        
+        # Verify qemu-img is available
+        if command -v qemu-img &> /dev/null; then
+            echo "✅ qemu-img is available"
+            qemu-img --version
+        else
+            echo "❌ qemu-img is still not available after installation attempt"
+            exit 1
         fi
         
         # Check if we can use sudo for mounting
