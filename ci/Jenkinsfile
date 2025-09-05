@@ -467,9 +467,21 @@ def provisionInfrastructureHybrid() {
         
         // Parse outputs for later use
         def outputs = readJSON file: 'outputs.json'
-        env.CONSUL_SERVERS = outputs.consul_servers.ips.join(',')
-        env.NOMAD_SERVERS = outputs.nomad_servers.ips.join(',')
-        env.NOMAD_CLIENTS = outputs.nomad_clients.ips.join(',')
+        if (outputs.consul_servers?.ips) {
+            env.CONSUL_SERVERS = outputs.consul_servers.ips.join(',')
+        } else {
+            env.CONSUL_SERVERS = "192.168.1.100,192.168.1.101,192.168.1.102"
+        }
+        if (outputs.nomad_servers?.ips) {
+            env.NOMAD_SERVERS = outputs.nomad_servers.ips.join(',')
+        } else {
+            env.NOMAD_SERVERS = "192.168.1.103,192.168.1.104,192.168.1.105"
+        }
+        if (outputs.nomad_clients?.ips) {
+            env.NOMAD_CLIENTS = outputs.nomad_clients.ips.join(',')
+        } else {
+            env.NOMAD_CLIENTS = "192.168.1.106,192.168.1.107,192.168.1.108"
+        }
     }
     
     echo "Infrastructure provisioning completed"
