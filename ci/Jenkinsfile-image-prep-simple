@@ -194,6 +194,7 @@ def injectCloudInitConfig() {
             writeFile file: 'ssh-key.txt', text: env.SSH_PUBLIC_KEY
             
             sh '''
+                mkdir -p /tmp/vm-image-prep
                 cd /tmp/vm-image-prep
                 
                 # Create cloud-init directory structure
